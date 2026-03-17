@@ -1,0 +1,27 @@
+youtube project next steps
+
+NEXT_STEPS.txt — Reddit YouTube Empire
+
+PHASE 1 — Do These First (Phone Friendly, No Code)
+
+1. reddit.com/prefs/apps
+   → Create App → type: script
+   → Save: client_id, client_secret, username, password
+
+2. elevenlabs.io
+   → Create account
+   → Profile → API Key → copy and save it
+   → Pick a voice → save the Voice ID
+
+3. pexels.com/api
+   → Create account
+   → Get free API key → save it
+
+4. replit.com
+   → Create free account
+   → This is your coding environment
+
+WHEN READY — Come back to Claude and say:
+"I have my credentials, ready for Phase 2"
+
+Phase 2 = Replit setup + first Reddit scraper script for Dark & Eerie channel.

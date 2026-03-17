@@ -1,0 +1,264 @@
+version: "3.9"
+
+services:
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: story_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: story_engine
+      POSTGRES_USER: story
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./story_engine/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U story -d story_engine"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: story_redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── SCHEDULER (recommended entry point — runs everything automatically) ─────
+  # Start this one service and it handles ingest + all workers automatically.
+  # docker-compose up scheduler
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: story_scheduler
+    restart: unless-stopped
+    command: python -m story_engine.scheduler
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - video_data:/data/videos
+      - ./assets:/app/assets:ro
+      - ./credentials:/app/credentials:ro
+      - ./logs:/app/logs
+
+  # ── OR: Run workers individually (advanced / debugging) ────────────────────
+  worker-normalize:
+    build: .
+    container_name: story_worker_normalize
+    restart: unless-stopped
+    command: python -m story_engine.cli worker normalize
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    profiles: ["workers"]
+
+  worker-clean:
+    build: .
+    container_name: story_worker_clean
+    restart: unless-stopped
+    command: python -m story_engine.cli worker clean
+    env_file: .env
+    depends_on: [worker-normalize]
+    profiles: ["workers"]
+
+  worker-score:
+    build: .
+    container_name: story_worker_score
+    restart: unless-stopped
+    command: python -m story_engine.cli worker score
+    env_file: .env
+    depends_on: [worker-clean]
+    profiles: ["workers"]
+
+  worker-hook:
+    build: .
+    container_name: story_worker_hook
+    restart: unless-stopped
+    command: python -m story_engine.cli worker hook
+    env_file: .env
+    depends_on: [worker-score]
+    profiles: ["workers"]
+
+  worker-validate:
+    build: .
+    container_name: story_worker_validate
+    restart: unless-stopped
+    command: python -m story_engine.cli worker validate
+    env_file: .env
+    depends_on: [worker-hook]
+    profiles: ["workers"]
+
+  worker-censor:
+    build: .
+    container_name: story_worker_censor
+    restart: unless-stopped
+    command: python -m story_engine.cli worker censor
+    env_file: .env
+    depends_on: [worker-validate]
+    profiles: ["workers"]
+
+  worker-format:
+    build: .
+    container_name: story_worker_format
+    restart: unless-stopped
+    command: python -m story_engine.cli worker format
+    env_file: .env
+    depends_on: [worker-censor]
+    profiles: ["workers"]
+
+  worker-store:
+    build: .
+    container_name: story_worker_store
+    restart: unless-stopped
+    command: python -m story_engine.cli worker store
+    env_file: .env
+    depends_on: [worker-format]
+    profiles: ["workers"]
+
+  worker-video-build:
+    build: .
+    container_name: story_worker_video_build
+    restart: unless-stopped
+    command: python -m story_engine.cli worker video_build
+    env_file: .env
+    depends_on: [worker-store]
+    volumes:
+      - video_data:/data/videos
+      - ./assets:/app/assets:ro
+    profiles: ["workers"]
+
+  worker-publish:
+    build: .
+    container_name: story_worker_publish
+    restart: unless-stopped
+    command: python -m story_engine.cli worker publish
+    env_file: .env
+    depends_on: [worker-video-build]
+    volumes:
+      - video_data:/data/videos
+      - ./credentials:/app/credentials:ro
+    profiles: ["workers"]
+
+volumes:
+  postgres_data:
+  redis_data:
+  video_data:
+```
+
+---
+
+**Ctrl+S**, close. Now:
+
+**FILE 19b — `.env.example`** (root folder, note the dot at the start)
+```
+notepad G:\RedditYouTubeEmpire\.env.example
+```
+
+Paste this:
+
+---
+```
+# ── Story Engine Environment Config ─────────────────────────────────────────
+# Copy to .env and fill in your values before running.
+
+# ── App ──────────────────────────────────────────────────────────────────────
+APP_ENV=production
+LOG_LEVEL=INFO
+WORKERS=4
+
+# ── Database ─────────────────────────────────────────────────────────────────
+DATABASE_URL=postgresql://story:changeme@localhost:5432/story_engine
+POSTGRES_PASSWORD=changeme
+
+# ── Redis ────────────────────────────────────────────────────────────────────
+REDIS_URL=redis://localhost:6379/0
+
+# ── Reddit API ───────────────────────────────────────────────────────────────
+# Get credentials at: reddit.com/prefs/apps → create app → script type
+REDDIT_CLIENT_ID=your_reddit_client_id
+REDDIT_CLIENT_SECRET=your_reddit_client_secret
+REDDIT_USER_AGENT=StoryEngine/1.0 by u/yourusername
+# Leave REDDIT_SUBREDDITS empty to use the full default list (65+ subreddits)
+# REDDIT_SUBREDDITS=AmItheAsshole,tifu,TrueOffMyChest
+REDDIT_POST_LIMIT=50
+REDDIT_MIN_UPVOTES=100
+REDDIT_MIN_WORD_COUNT=200
+
+# ── 4chan (no key needed — public API) ────────────────────────────────────────
+# FourChanAdapter works out of the box. No config required.
+# Boards used: r9k, adv, fit, biz, x, tv
+
+# ── Tumblr API ────────────────────────────────────────────────────────────────
+# Get a free consumer key at: tumblr.com/oauth/apps
+TUMBLR_API_KEY=your_tumblr_consumer_key
+
+# ── Threads (Meta) API ────────────────────────────────────────────────────────
+# Get at: developers.facebook.com → create app → add Threads API product
+THREADS_ACCESS_TOKEN=your_threads_access_token
+
+# ── Mumsnet (no key needed — public RSS) ──────────────────────────────────────
+# MumsnetAdapter works out of the box. No config required.
+
+# ── Hacker News (no key needed — public API) ──────────────────────────────────
+# HackerNewsAdapter works out of the box. No config required.
+
+# ── NewsAPI (trend signals only — free tier: 100 req/day) ────────────────────
+# Get key at: https://newsapi.org/register
+NEWSAPI_KEY=your_newsapi_key
+NEWSAPI_PAGE_SIZE=20
+
+# ── AI Provider (choose one) ──────────────────────────────────────────────────
+AI_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-...
+# AI_PROVIDER=openai
+# OPENAI_API_KEY=sk-...
+
+AI_MODEL_ANTHROPIC=claude-opus-4-6
+AI_MODEL_OPENAI=gpt-4o
+
+# ── Scoring ───────────────────────────────────────────────────────────────────
+MIN_SCORE=7.0
+AUTO_REJECT_SCORE=7.0
+
+# ── Video ─────────────────────────────────────────────────────────────────────
+VIDEO_OUTPUT_DIR=/data/videos
+ASSETS_DIR=/app/assets
+SHORT_MAX_WORDS=300
+FONT_PATH=/app/assets/fonts/Roboto-Bold.ttf
+TTS_VOICE=alloy
+
+# ── Publishing ────────────────────────────────────────────────────────────────
+ENABLED_PLATFORMS=youtube
+YOUTUBE_CLIENT_SECRET_PATH=/app/credentials/youtube_client_secret.json
+# TIKTOK_ACCESS_TOKEN=
+# INSTAGRAM_ACCESS_TOKEN=
+
+# ── Queue ─────────────────────────────────────────────────────────────────────
+JOB_TIMEOUT=300
+QUEUE_MAX_RETRIES=3
+QUEUE_RETRY_TTL=3600
+
+# ── Scheduler ─────────────────────────────────────────────────────────────────
+INGEST_INTERVAL_HOURS=3
+ANALYTICS_INTERVAL_HOURS=6
+CLEANUP_CRON_HOUR=3

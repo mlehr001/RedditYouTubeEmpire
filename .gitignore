@@ -1,0 +1,29 @@
+# Environment
+.env
+.env.local
+
+# Virtual environment
+venv/
+
+# Output files
+output/
+assets/broll/
+
+# YouTube OAuth token
+token.pickle
+token.json
+client_secrets.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
