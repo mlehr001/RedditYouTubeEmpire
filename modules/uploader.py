@@ -33,7 +33,7 @@ def _get_authenticated_service():
             if not os.path.exists(secrets_file):
                 raise FileNotFoundError(
                     f"YouTube client secrets file not found: '{secrets_file}'\n"
-                    "Download it from Google Cloud Console → APIs & Services → Credentials."
+                    "Download it from Google Cloud Console -> APIs & Services -> Credentials."
                 )
             flow = InstalledAppFlow.from_client_secrets_file(secrets_file, SCOPES)
             credentials = flow.run_local_server(port=0)
@@ -97,8 +97,8 @@ def upload_to_youtube(video_path, post):
         return f"https://www.youtube.com/watch?v={video_id}"
 
     except FileNotFoundError as e:
-        print(f"  ⚠️  {e}")
+        print(f"  [WARN] {e}")
         return None
     except Exception as e:
-        print(f"  ⚠️  YouTube upload failed: {e}")
+        print(f"  [WARN] YouTube upload failed: {e}")
         return None

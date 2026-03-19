@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep:*)",
+      "Bash(grep -r BaseWorker /g/RedditYouTubeEmpire/story_engine/ --include=*.py)",
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(pip show:*)",
+      "Bash(PYTHONIOENCODING=utf-8 python main.py 2>&1)",
+      "Bash(venv/Scripts/python main.py)",
+      "Bash(python -c \":*)"
+    ]
+  }
+}

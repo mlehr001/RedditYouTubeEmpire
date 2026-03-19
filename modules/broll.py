@@ -77,6 +77,52 @@ def _fetch_from_pexels(search_term):
     return None, None
 
 
+def get_clips_for_keywords(keywords: list) -> list:
+    """
+    Fetches one Pexels clip per keyword. Returns a list of local file paths.
+    Falls back to cached clips for any keyword that fails to download.
+    Guarantees at least one clip is returned (raises if nothing available).
+    """
+    os.makedirs(config.ASSETS_DIR, exist_ok=True)
+    result_paths = []
+
+    for keyword in keywords:
+        try:
+            video_url, filename = _fetch_from_pexels(keyword)
+        except Exception as e:
+            print(f"  [WARN] Pexels fetch failed for '{keyword}': {e}")
+            video_url, filename = None, None
+
+        if not video_url or not filename:
+            print(f"  [SKIP] No clip found for '{keyword}'.")
+            continue
+
+        dest = os.path.join(config.ASSETS_DIR, filename)
+        if os.path.exists(dest):
+            result_paths.append(dest)
+            print(f"  [CACHE] '{keyword}': {filename}")
+        else:
+            try:
+                print(f"  [DL] '{keyword}': {filename}")
+                path = _download_clip(video_url, filename)
+                result_paths.append(path)
+            except Exception as e:
+                print(f"  [WARN] Download failed for '{keyword}': {e}")
+
+    if not result_paths:
+        # Hard fallback: use whatever is cached
+        cached = _get_cached_clips()
+        if cached:
+            result_paths = cached[:1]
+        else:
+            raise RuntimeError(
+                "No background clips available. "
+                "Check your PEXELS_API_KEY and internet connection."
+            )
+
+    return result_paths
+
+
 def get_background_clip():
     """
     Returns a path to a local background video clip.

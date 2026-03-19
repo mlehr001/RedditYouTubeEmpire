@@ -5,20 +5,20 @@ load_dotenv()
 
 # ─── Reddit Settings ──────────────────────────────────────────────────────────
 
-# Subreddits to scrape (add or remove as you like)
+# Personal-story subreddits — conflict, relationships, emotional stakes
 SUBREDDITS = [
     "AmItheAsshole",
     "tifu",
-    "confessions",
-    "relationships",
-    "TrueOffMyChest",
+    "relationship_advice",
+    "confession",
+    "offmychest",
 ]
 
 # Only pull posts with this score or higher
-MIN_POST_SCORE = 5000
+MIN_POST_SCORE = 1000
 
 # How many posts to check per run
-POST_LIMIT = 10
+POST_LIMIT = 25
 
 # Time filter: "day", "week", "month", "year", "all"
 TIME_FILTER = "week"
@@ -31,23 +31,35 @@ SKIP_USED_POSTS = True
 # Max words in the final TTS script (keep videos under ~10 min)
 MAX_SCRIPT_WORDS = 1200
 
-# Add an intro line before reading the post
-INTRO_TEMPLATE = "Today's story comes from Reddit's {subreddit} community."
+# Conversational intro — sets TikTok/YouTube Shorts tone
+INTRO_TEMPLATE = "So this person posts to r/{subreddit}... and it gets wild fast."
 
-# Add an outro to drive engagement
+# Outro to drive engagement
 OUTRO = (
-    "What do you think? Drop a comment below. "
-    "Subscribe for more Reddit stories every day."
+    "So... what would YOU have done? Drop it in the comments. "
+    "And subscribe — new stories drop every day."
 )
 
 # ─── TTS Settings ─────────────────────────────────────────────────────────────
 
-TTS_ENGINE = os.getenv("TTS_ENGINE", "gtts")  # "gtts", "elevenlabs", "openai"
-TTS_LANGUAGE = "en"                            # for gTTS
-TTS_SPEED = False                              # gTTS slow mode
+def _auto_tts_engine():
+    """Pick the best available TTS engine based on configured API keys."""
+    if os.getenv("ELEVENLABS_API_KEY"):
+        return "elevenlabs"
+    if os.getenv("OPENAI_API_KEY"):
+        return "openai"
+    return "gtts"
+
+TTS_ENGINE = os.getenv("TTS_ENGINE", _auto_tts_engine())
+TTS_LANGUAGE = "en"
+TTS_SPEED = False
 
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
-OPENAI_TTS_VOICE = "onyx"                      # alloy, echo, fable, onyx, nova, shimmer
+# stability 35-50, similarity_boost (clarity) 70-80, slight style exaggeration
+ELEVENLABS_STABILITY = 0.40
+ELEVENLABS_SIMILARITY_BOOST = 0.75
+ELEVENLABS_STYLE = 0.30
+OPENAI_TTS_VOICE = "onyx"
 
 # ─── Video Settings ───────────────────────────────────────────────────────────
 

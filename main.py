@@ -1,6 +1,6 @@
 """
-RedditYouTubeEmpire — Full Pipeline
-Scrape Reddit → Write Script → TTS → B-Roll → Edit → Upload to YouTube
+RedditYouTubeEmpire — Full Pipeline (Video 2)
+Reddit personal stories → Conversational script → ElevenLabs TTS → Keyword b-roll → Edit → Upload
 """
 
 import os
@@ -9,58 +9,95 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from modules.scraper import get_post
+from modules.scraper import get_reddit_json_post, get_post, get_hn_post, get_4chan_post
 from modules.script_writer import build_script
 from modules.tts import generate_audio
-from modules.broll import get_background_clip
+from modules.broll import get_clips_for_keywords
 from modules.editor import create_video
 from modules.uploader import upload_to_youtube
 import config
 
+
 def run():
-    print("\n🚀 RedditYouTubeEmpire starting...\n")
+    print("\n[START] RedditYouTubeEmpire starting...\n")
 
-    # 1. Scrape Reddit
-    print("📡 Scraping Reddit...")
-    post = get_post()
+    # 1. Scrape — Reddit personal stories (public JSON, no creds needed)
+    #    Fall back to PRAW -> HN -> 4chan
+    post = None
+    source_label = None
+
+    print("[SCRAPE] Scraping Reddit personal stories (public API)...")
+    post = get_reddit_json_post()
+    if post:
+        source_label = f"r/{post['subreddit']}"
+    else:
+        # Try PRAW if credentials are configured
+        reddit_ready = bool(os.getenv("REDDIT_CLIENT_ID") and os.getenv("REDDIT_CLIENT_SECRET"))
+        if reddit_ready:
+            print("  -> Public API failed -- trying PRAW...")
+            post = get_post()
+            if post:
+                source_label = f"r/{post['subreddit']} (PRAW)"
+
     if not post:
-        print("❌ No suitable post found. Try again later or adjust config.py settings.")
-        sys.exit(1)
-    print(f"✅ Found post: '{post['title']}' (r/{post['subreddit']}, {post['score']} upvotes)")
+        print("  -> Reddit unavailable -- trying Hacker News...")
+        post = get_hn_post()
+        source_label = "Hacker News"
 
-    # 2. Build TTS script
-    print("\n✍️  Writing script...")
-    script = build_script(post)
+    if not post:
+        print("  -> HN failed -- trying 4chan...")
+        post = get_4chan_post()
+        source_label = "4chan"
+
+    if not post:
+        print("[ERROR] No suitable post found. Try again later.")
+        sys.exit(1)
+
+    print(f"[OK] Found: '{post['title'][:80]}' ({source_label}, score: {post['score']})")
+
+    # 2. Build script (AI-assisted: conversational framing + keywords + titles)
+    print("\n[SCRIPT] Writing script...")
+    result = build_script(post)
+    script = result["script"]
+    keywords = result["keywords"]
+    titles = result["titles"]
     word_count = len(script.split())
-    print(f"✅ Script ready ({word_count} words)")
+    print(f"[OK] Script ready ({word_count} words)")
+    print(f"     Keywords: {', '.join(keywords)}")
 
     # 3. Generate TTS audio
-    print(f"\n🎙️  Generating TTS audio ({config.TTS_ENGINE})...")
-    audio_path = generate_audio(script, post['id'])
-    print(f"✅ Audio saved: {audio_path}")
+    print(f"\n[TTS] Generating audio ({config.TTS_ENGINE})...")
+    audio_path = generate_audio(script, post["id"])
+    print(f"[OK] Audio saved: {audio_path}")
 
-    # 4. Get background clip
-    print("\n🎬 Fetching background video...")
-    broll_path = get_background_clip()
-    print(f"✅ Background clip ready: {broll_path}")
+    # 4. Fetch one b-roll clip per keyword
+    print(f"\n[BROLL] Fetching clips for {len(keywords)} keywords...")
+    clip_paths = get_clips_for_keywords(keywords)
+    print(f"[OK] {len(clip_paths)} clips ready")
 
-    # 5. Edit video
-    print("\n🎞️  Editing video...")
-    video_path = create_video(audio_path, broll_path, post)
-    print(f"✅ Video saved: {video_path}")
+    # 5. Edit video — Ken Burns + clip-per-keyword switching
+    print("\n[EDIT] Editing video...")
+    video_path = create_video(audio_path, clip_paths, post)
+    print(f"[OK] Video saved: {video_path}")
 
     # 6. Upload to YouTube
-    print("\n📤 Uploading to YouTube...")
+    print("\n[UPLOAD] Uploading to YouTube...")
     video_url = upload_to_youtube(video_path, post)
     if video_url:
-        print(f"✅ Uploaded! {video_url}")
+        print(f"[OK] Uploaded: {video_url}")
     else:
-        print("⚠️  Upload skipped or failed. Video is saved locally.")
+        print("[WARN] Upload skipped or failed. Video saved locally.")
 
     # 7. Mark post as used
-    _mark_post_used(post['id'])
+    _mark_post_used(post["id"])
 
-    print(f"\n🎉 Done! Video: {video_path}\n")
+    # 8. Print title options
+    print(f"\n{'-' * 60}")
+    print("TITLE OPTIONS -- pick the best one:")
+    for i, title in enumerate(titles, 1):
+        print(f"  {i}. {title}")
+    print(f"{'-' * 60}")
+    print(f"\n[DONE] Video: {video_path}\n")
 
 
 def _mark_post_used(post_id):
@@ -69,7 +106,6 @@ def _mark_post_used(post_id):
 
 
 if __name__ == "__main__":
-    # Create output dirs if they don't exist
     os.makedirs(config.OUTPUT_DIR, exist_ok=True)
     os.makedirs(config.ASSETS_DIR, exist_ok=True)
     run()

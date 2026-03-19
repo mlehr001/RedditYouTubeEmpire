@@ -35,15 +35,27 @@ def _gtts(script, output_path):
 
 def _elevenlabs(script, output_path):
     from elevenlabs.client import ElevenLabs
-    from elevenlabs import save
+    from elevenlabs import VoiceSettings
 
     client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
-    audio = client.generate(
+
+    # SDK 1.x: text_to_speech.convert() returns an iterator of audio chunks
+    audio_stream = client.text_to_speech.convert(
+        voice_id=config.ELEVENLABS_VOICE_ID,
         text=script,
-        voice=config.ELEVENLABS_VOICE_ID,
-        model="eleven_monolingual_v1",
+        model_id="eleven_monolingual_v1",
+        voice_settings=VoiceSettings(
+            stability=config.ELEVENLABS_STABILITY,
+            similarity_boost=config.ELEVENLABS_SIMILARITY_BOOST,
+            style=config.ELEVENLABS_STYLE,
+            use_speaker_boost=True,
+        ),
     )
-    save(audio, output_path)
+
+    with open(output_path, "wb") as f:
+        for chunk in audio_stream:
+            f.write(chunk)
+
     return output_path
 
 
