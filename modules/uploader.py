@@ -45,15 +45,16 @@ def _get_authenticated_service():
     return build("youtube", "v3", credentials=credentials)
 
 
-def upload_to_youtube(video_path, post):
+def upload_to_youtube(video_path, post, final_title: str | None = None):
     """
     Uploads video_path to YouTube with metadata from post.
+    If final_title is provided it overrides config.YOUTUBE_TITLE_TEMPLATE.
     Returns the video URL on success, None on failure.
     """
     try:
         youtube = _get_authenticated_service()
 
-        title = config.YOUTUBE_TITLE_TEMPLATE.format(title=post["title"][:80])
+        title = final_title if final_title else config.YOUTUBE_TITLE_TEMPLATE.format(title=post["title"][:80])
         description = config.YOUTUBE_DESCRIPTION_TEMPLATE.format(
             title=post["title"],
             subreddit=post["subreddit"],

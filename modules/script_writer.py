@@ -37,7 +37,7 @@ def _trim_to_word_limit(text: str, max_words: int) -> str:
     return trimmed
 
 
-_AI_PROMPT = """\
+_AI_PROMPT_BASE = """\
 You are a script formatter for a YouTube storytelling channel. Your only job is:
 1. Add a short conversational hook (2 sentences max) before the story — something like "So this person posts... and it gets wild fast." or "Okay so this one had me absolutely speechless."
 2. Insert brief narration transitions between story sections: "And then...", "But here's where it gets interesting...", "So naturally...", "Wait — it gets worse."
@@ -59,9 +59,29 @@ Return ONLY valid JSON (no markdown fences) in this exact shape:
 }"""
 
 
-def _ai_format(post: dict, body: str) -> dict | None:
+def _build_system_prompt(angle: dict | None) -> str:
+    """
+    Builds the system prompt, optionally injecting a commentary angle.
+    The angle shapes hook tone and transition style only — never story content.
+    """
+    if angle is None:
+        return _AI_PROMPT_BASE
+
+    angle_block = (
+        f"\nCOMMENTARY ANGLE (for hook and transition tone only — do NOT alter story):\n"
+        f"  Title: {angle['title']}\n"
+        f"  Core Take: {angle['core_take']}\n"
+        f"  Style: {angle['style']}\n"
+        f"Let this angle inform the hook wording and transition energy. "
+        f"Story body must remain verbatim.\n"
+    )
+    return _AI_PROMPT_BASE + angle_block
+
+
+def _ai_format(post: dict, body: str, angle: dict | None = None) -> dict | None:
     """
     Calls OpenAI to format the script and extract keywords + titles.
+    Accepts an optional angle dict to shape hook/transition tone.
     Returns dict with script/keywords/titles, or None on failure.
     """
     api_key = os.getenv("OPENAI_API_KEY")
@@ -71,6 +91,8 @@ def _ai_format(post: dict, body: str) -> dict | None:
     try:
         from openai import OpenAI
         client = OpenAI(api_key=api_key)
+
+        system_prompt = _build_system_prompt(angle)
 
         user_content = (
             f"Subreddit: r/{post['subreddit']}\n"
@@ -82,7 +104,7 @@ def _ai_format(post: dict, body: str) -> dict | None:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": _AI_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
             ],
             temperature=0.4,
@@ -140,7 +162,106 @@ def _fallback_format(post: dict, body: str) -> dict:
     return {"script": script, "keywords": keywords, "titles": titles}
 
 
-def build_script(post: dict) -> dict:
+_COMMENTARY_PROMPT = """\
+You are a YouTube commentary creator.
+
+Write a high-retention script based on this angle.
+
+RULES:
+- conversational tone
+- slightly sarcastic or opinionated
+- short sentences
+- fast pacing
+- no fluff
+- no formal language
+
+STRUCTURE:
+1. Hook (first 5-8 seconds, strong opinion or curiosity)
+2. Context (quick setup)
+3. Commentary (your take)
+4. Escalation (why this matters or gets worse)
+5. Punchline / takeaway
+
+STYLE:
+- sound like a real person talking
+- use emphasis words (weird, insane, awkward, wild)
+- break sentences naturally
+- include pauses when appropriate (use ...)
+- avoid robotic phrasing
+
+OUTPUT:
+Only the final script, nothing else.
+
+Angle: {angle_title} — {angle_core_take}
+Topic: {topic_summary}"""
+
+
+def build_commentary_script(post: dict, angle: dict | None = None) -> dict:
+    """
+    Builds a commentary-style script using the Anthropic API.
+    Used for non-Reddit-personal-story sources (commentary, hn, 4chan).
+
+    Args:
+        post:  Scraped post dict with title/body/source_type.
+        angle: Optional angle dict from angle_selector.generate_angles().
+
+    Returns:
+        {"script": str, "keywords": list, "titles": list}
+    """
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        log.warning("ANTHROPIC_API_KEY not set — falling back to non-AI script.")
+        return _fallback_format(post, _clean_text(post["body"]))
+
+    angle_title = angle["title"] if angle else "General commentary"
+    angle_core_take = angle["core_take"] if angle else "Interesting story worth discussing"
+    topic_summary = f"{post['title'].strip()} — {_clean_text(post['body'])[:400]}"
+
+    system_prompt = _COMMENTARY_PROMPT.format(
+        angle_title=angle_title,
+        angle_core_take=angle_core_take,
+        topic_summary=topic_summary,
+    )
+
+    user_content = (
+        'Return JSON only:\n'
+        '{\n'
+        '  "script": "...",\n'
+        '  "keywords": ["word1", "word2", ...],\n'
+        '  "titles": ["Title 1", "Title 2", "Title 3"]\n'
+        '}'
+    )
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=2000,
+            messages=[
+                {"role": "user", "content": f"{system_prompt}\n\n{user_content}"},
+            ],
+        )
+
+        raw = response.content[0].text.strip()
+        raw = re.sub(r"^```(?:json)?\s*", "", raw)
+        raw = re.sub(r"\s*```$", "", raw)
+        result = json.loads(raw)
+
+        if not all(k in result for k in ("script", "keywords", "titles")):
+            raise ValueError("Missing required keys in Anthropic response")
+        if len(result["titles"]) < 3:
+            raise ValueError("Expected 3 titles")
+
+        return result
+
+    except Exception as e:
+        log.warning(f"Commentary script (Anthropic) failed: {e} — using fallback.")
+        return _fallback_format(post, _clean_text(post["body"]))
+
+
+def build_script(post: dict, angle: dict | None = None) -> dict:
     """
     Takes a post dict and returns:
       {
@@ -148,6 +269,11 @@ def build_script(post: dict) -> dict:
         "keywords": list — 5-8 visual b-roll keywords,
         "titles":   list — 3 candidate YouTube titles
       }
+
+    Args:
+        post:  Scraped post dict with title/body/subreddit/id/score.
+        angle: Optional selected angle dict from angle_selector.generate_angles().
+               Shapes hook tone and transition energy; never alters story content.
     """
     body = _clean_text(post["body"])
 
@@ -156,7 +282,7 @@ def build_script(post: dict) -> dict:
     body_limit = config.MAX_SCRIPT_WORDS - reserved
     body = _trim_to_word_limit(body, body_limit)
 
-    result = _ai_format(post, body)
+    result = _ai_format(post, body, angle=angle)
     if result is None:
         log.info("Using fallback (non-AI) script formatting.")
         result = _fallback_format(post, body)

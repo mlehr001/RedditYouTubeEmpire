@@ -58,6 +58,88 @@ def _make_segment(clip_path: str, seg_duration: float) -> VideoFileClip:
     return clip
 
 
+def create_video_from_beats(audio_path: str, beat_clips: list, post: dict) -> str:
+    """
+    Assembles a video using beat-mapped clips with per-beat durations.
+
+    beat_clips: list of dicts from get_clips_for_beats():
+      [{"path": str, "duration": int, "beat_name": str, "emotion": str}, ...]
+
+    Each beat gets its exact duration. If the TTS audio runs longer than the
+    total beat duration, beats cycle from the start to cover the remainder.
+    Returns path to the output video file.
+    """
+    output_filename = f"{post['id']}_final.mp4"
+    output_path = os.path.join(config.OUTPUT_DIR, output_filename)
+
+    print(f"  Loading audio: {audio_path}")
+    audio = AudioFileClip(audio_path)
+    total_duration = audio.duration
+
+    segments = []
+    elapsed = 0.0
+    beat_index = 0
+    total_beats = len(beat_clips)
+
+    print(f"  Building {total_duration:.1f}s video from {total_beats} beat-mapped clips...")
+    while elapsed < total_duration:
+        beat = beat_clips[beat_index % total_beats]
+        remaining = total_duration - elapsed
+        seg_duration = min(float(beat["duration"]), remaining)
+
+        print(
+            f"  -> Beat {beat_index + 1}: '{beat['beat_name']}' [{beat['emotion']}] "
+            f"{os.path.basename(beat['path'])} ({seg_duration:.1f}s)"
+        )
+        seg = _make_segment(beat["path"], seg_duration)
+        segments.append(seg)
+        elapsed += seg_duration
+        beat_index += 1
+
+    background = concatenate_videoclips(segments)
+    background = background.with_volume_scaled(config.BROLL_VOLUME)
+    final = background.with_audio(audio)
+
+    # Subtle title card for first 5 seconds
+    try:
+        title_text = post["title"]
+        if len(title_text) > 80:
+            title_text = title_text[:77] + "..."
+
+        title_clip = (
+            TextClip(
+                title_text,
+                font_size=36,
+                color="white",
+                stroke_color="black",
+                stroke_width=2,
+                size=(config.VIDEO_WIDTH - 80, None),
+                method="caption",
+            )
+            .with_position(("center", 40))
+            .with_duration(min(5, total_duration))
+        )
+        final = CompositeVideoClip([final, title_clip])
+    except Exception as e:
+        print(f"  [WARN] Title card skipped: {e}")
+
+    print(f"  Rendering video to {output_path}...")
+    final.write_videofile(
+        output_path,
+        fps=config.VIDEO_FPS,
+        codec="libx264",
+        audio_codec="aac",
+        temp_audiofile=os.path.join(config.OUTPUT_DIR, "temp_audio.m4a"),
+        remove_temp=True,
+        logger=None,
+    )
+
+    audio.close()
+    background.close()
+
+    return output_path
+
+
 def create_video(audio_path: str, clip_paths: list, post: dict) -> str:
     """
     Combines TTS audio with multiple b-roll clips, switching every 4-5 seconds.

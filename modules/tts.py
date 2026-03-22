@@ -37,7 +37,7 @@ def _elevenlabs(script, output_path):
     from elevenlabs.client import ElevenLabs
     from elevenlabs import VoiceSettings
 
-    client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
+    client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"), timeout=120)
 
     # SDK 1.x: text_to_speech.convert() returns an iterator of audio chunks
     audio_stream = client.text_to_speech.convert(

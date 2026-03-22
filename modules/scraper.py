@@ -96,6 +96,7 @@ def get_reddit_json_post(min_words: int = 150) -> dict | None:
                 "subreddit": subreddit_name,
                 "url": f"https://reddit.com{post.get('permalink', '')}",
                 "author": post.get("author", "unknown"),
+                "source_type": "reddit_story",
             }
 
     return None
@@ -196,6 +197,7 @@ def get_hn_post(min_score: int = 50, min_words: int = 150, max_check: int = 200)
                 "subreddit": "HackerNews",
                 "url": item.get("url") or f"https://news.ycombinator.com/item?id={story_id}",
                 "author": item.get("by", "unknown"),
+                "source_type": "hn",
             }
 
     return None
@@ -324,6 +326,7 @@ def get_4chan_post(min_replies: int = 10, min_words: int = 100) -> dict | None:
                 "subreddit": f"4chan/{board}",
                 "url": f"https://boards.4channel.org/{board}/thread/{thread_no}",
                 "author": "Anonymous",
+                "source_type": "4chan",
             }
 
     return None
@@ -380,6 +383,7 @@ def get_post():
                 "subreddit": subreddit_name,
                 "url": f"https://reddit.com{post.permalink}",
                 "author": str(post.author),
+                "source_type": "reddit_story",
             }
 
     return None

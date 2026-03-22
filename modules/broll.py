@@ -77,6 +77,46 @@ def _fetch_from_pexels(search_term):
     return None, None
 
 
+def _fetch_from_pexels_unique(search_term: str, used_ids: set) -> tuple:
+    """
+    Like _fetch_from_pexels but skips video IDs already in used_ids.
+    Iterates all results before giving up, so uniqueness is best-effort.
+    Returns (video_url, filename) or (None, None).
+    """
+    api_key = os.getenv("PEXELS_API_KEY")
+    if not api_key:
+        raise ValueError("PEXELS_API_KEY not set in .env")
+
+    headers = {"Authorization": api_key}
+    params = {
+        "query": search_term,
+        "per_page": 15,
+        "orientation": "landscape",
+        "size": "large",
+    }
+
+    response = requests.get(PEXELS_API_BASE, headers=headers, params=params, timeout=15)
+    response.raise_for_status()
+    data = response.json()
+
+    videos = data.get("videos", [])
+    random.shuffle(videos)
+
+    for video in videos:
+        video_id = video["id"]
+        if video_id in used_ids:
+            continue
+
+        files = sorted(video.get("video_files", []), key=lambda x: x.get("width", 0), reverse=True)
+        for f in files:
+            if f.get("width", 0) >= 1920:
+                return f["link"], f"{video_id}.mp4", video_id
+        if files:
+            return files[0]["link"], f"{video_id}.mp4", video_id
+
+    return None, None, None
+
+
 def get_clips_for_keywords(keywords: list) -> list:
     """
     Fetches one Pexels clip per keyword. Returns a list of local file paths.
@@ -121,6 +161,84 @@ def get_clips_for_keywords(keywords: list) -> list:
             )
 
     return result_paths
+
+
+def get_clips_for_beats(beats: list) -> list:
+    """
+    Fetches one unique Pexels clip per beat.
+
+    For each beat:
+    - Tries keywords[0] first, then keywords[1], etc. until a fresh clip is found.
+    - Never reuses the same Pexels video ID within one call.
+    - Falls back to cached clips if all keyword attempts fail.
+
+    Returns a list of dicts, one per beat:
+      [{"path": str, "duration": int, "beat_name": str, "emotion": str}, ...]
+    """
+    os.makedirs(config.ASSETS_DIR, exist_ok=True)
+    used_ids: set = set()
+    result = []
+
+    for beat in beats:
+        beat_name = beat.get("name", "beat")
+        emotion = beat.get("emotion", "")
+        duration = beat.get("duration", 4)
+        keywords = beat.get("keywords", [])
+
+        clip_path = None
+
+        for keyword in keywords:
+            try:
+                video_url, filename, video_id = _fetch_from_pexels_unique(keyword, used_ids)
+            except Exception as e:
+                print(f"  [WARN] Pexels fetch failed for beat '{beat_name}' / '{keyword}': {e}")
+                continue
+
+            if not video_url or not filename:
+                print(f"  [SKIP] No unique clip for beat '{beat_name}' / '{keyword}'.")
+                continue
+
+            dest = os.path.join(config.ASSETS_DIR, filename)
+            if os.path.exists(dest):
+                clip_path = dest
+                used_ids.add(video_id)
+                print(f"  [CACHE] Beat '{beat_name}' [{emotion}]: {filename}")
+                break
+            else:
+                try:
+                    print(f"  [DL] Beat '{beat_name}' [{emotion}] / '{keyword}': {filename}")
+                    clip_path = _download_clip(video_url, filename)
+                    used_ids.add(video_id)
+                    break
+                except Exception as e:
+                    print(f"  [WARN] Download failed for beat '{beat_name}' / '{keyword}': {e}")
+
+        if clip_path is None:
+            # Best-effort fallback: pick a cached clip not yet used this run
+            cached = [c for c in _get_cached_clips() if c not in [r["path"] for r in result]]
+            if not cached:
+                cached = _get_cached_clips()
+            if cached:
+                clip_path = random.choice(cached)
+                print(f"  [FALLBACK] Beat '{beat_name}': using cached {os.path.basename(clip_path)}")
+            else:
+                print(f"  [ERROR] No clip available for beat '{beat_name}' — skipping.")
+                continue
+
+        result.append({
+            "path":      clip_path,
+            "duration":  duration,
+            "beat_name": beat_name,
+            "emotion":   emotion,
+        })
+
+    if not result:
+        raise RuntimeError(
+            "No clips resolved for any beat. "
+            "Check PEXELS_API_KEY and internet connection."
+        )
+
+    return result
 
 
 def get_background_clip():

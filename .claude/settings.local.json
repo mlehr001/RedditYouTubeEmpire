@@ -8,7 +8,9 @@
       "Bash(pip show:*)",
       "Bash(PYTHONIOENCODING=utf-8 python main.py 2>&1)",
       "Bash(venv/Scripts/python main.py)",
-      "Bash(python -c \":*)"
+      "Bash(python -c \":*)",
+      "Bash(venv/Scripts/python.exe main.py)",
+      "Bash(venv/Scripts/pip install:*)"
     ]
   }
 }
