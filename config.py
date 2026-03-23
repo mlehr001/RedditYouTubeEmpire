@@ -105,3 +105,26 @@ YOUTUBE_DESCRIPTION_TEMPLATE = (
     "🔔 Subscribe for daily Reddit stories!\n\n"
     "#reddit #{subreddit} #storytime #tts"
 )
+
+# ─── Channel Settings ─────────────────────────────────────────────────────────
+
+# CH1: "story" = Reddit personal story pipeline (default)
+# CH2: "mystery" = Mystery Top 5 countdown pipeline
+CHANNEL_TYPE = os.getenv("CHANNEL_TYPE", "story")
+
+# Mystery category — one of: alien_sightings, unsolved_disappearances,
+# unexplained_photos, mysterious_deaths, strange_cold_cases
+MYSTERY_CATEGORY = os.getenv("MYSTERY_CATEGORY", "alien_sightings")
+
+# ─── Mystery Video Settings ───────────────────────────────────────────────────
+
+MYSTERY_OUTPUT_DIR = os.path.join(OUTPUT_DIR, "mystery")
+MYSTERY_FRAMES_DIR = os.path.join("assets", "frames")
+MYSTERY_MUSIC_DIR = os.path.join("assets", "music")
+
+MYSTERY_YOUTUBE_TAGS = [
+    "mystery", "top 5", "unsolved", "unexplained", "scary",
+    "true crime", "documentary", "paranormal", "conspiracy",
+]
+
+MYSTERY_YOUTUBE_CATEGORY_ID = "27"  # 27 = Education

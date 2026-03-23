@@ -261,6 +261,194 @@ def build_commentary_script(post: dict, angle: dict | None = None) -> dict:
         return _fallback_format(post, _clean_text(post["body"]))
 
 
+_MYSTERY_TOP5_PROMPT = """\
+You are a mystery documentary narrator. Your tone is eerie, curious, and dramatic.
+Think LEMMiNO meets Bedtime Stories.
+
+Write a Top 5 YouTube countdown script about: {topic_title}
+
+STRICT RULES:
+- Cold open hook BEFORE revealing the topic (5-8 seconds, most unsettling tease)
+- Each entry flows naturally with a clear countdown marker
+- Build dread as list counts DOWN to #1
+- #1 is ALWAYS the most disturbing or unexplained entry
+- Mix short punchy sentences with slower dramatic ones
+- Use pauses (...) for effect
+- Treat real victims with gravity — never sensationalize suffering
+- Reference actual evidence and real footage when available
+- Style words: eerie, unsettling, strange, unexplained, bizarre, chilling, disturbing, forgotten, vanished
+
+STRUCTURE — use these EXACT markers for the editor:
+[COLD OPEN] Most unsettling tease — do NOT reveal the topic yet
+[INTRO] Brief setup (2-3 sentences max)
+[NUMBER 5: {entry5_title}] Entry 5 story + evidence + why it matters
+[NUMBER 4: {entry4_title}] Entry 4
+[NUMBER 3: {entry3_title}] Entry 3
+[NUMBER 2: {entry2_title}] Entry 2
+[NUMBER 1: {entry1_title}] Most disturbing — save best for last
+[OUTRO] Leave audience unsettled, thinking, or wanting more
+
+ENTRIES (use these real facts — do not invent new ones):
+{entries_block}
+
+{angle_block}
+
+Return ONLY valid JSON (no markdown fences):
+{{
+  "script": "full script with [NUMBER X: Title] markers",
+  "entries": [
+    {{
+      "number": 5,
+      "title": "entry title",
+      "script_section": "just this entry's narration text",
+      "media_query": "search term for real footage of this entry"
+    }}
+  ],
+  "keywords": ["dark", "mystery", "abandoned", "forest", "signal"],
+  "titles": ["Title Option 1", "Title Option 2", "Title Option 3"]
+}}"""
+
+
+def build_mystery_top5_script(
+    topic: dict, entries: list, angle: dict | None = None
+) -> dict:
+    """
+    Writes a Top 5 mystery countdown script using Anthropic Claude (primary).
+    Falls back to OpenAI if ANTHROPIC_API_KEY is missing.
+
+    Args:
+        topic:   Topic dict from mystery_scraper.get_mystery_topic().
+        entries: List of scored entries (top 5 used for script).
+        angle:   Optional angle dict from angle_selector.generate_angles().
+
+    Returns:
+        {
+          "script": str,              # full narration with [NUMBER X] markers
+          "entries": list,            # per-entry breakdown with media_query
+          "keywords": list,           # 5–8 visual keywords for B-roll
+          "titles": list              # 3 candidate YouTube titles
+        }
+    """
+    from modules.pipeline_logger import log_pipeline
+
+    top5 = entries[:5]
+    topic_title = topic.get("title", "Top 5 Mysteries")
+
+    entries_block = "\n\n".join([
+        f"Entry {i + 1} (#{5 - i}): {e['title']}\n"
+        f"Summary: {e['summary'][:300]}\n"
+        f"Source: {e.get('source_url', '')}"
+        for i, e in enumerate(top5)
+    ])
+
+    angle_block = ""
+    if angle:
+        angle_block = (
+            f"COMMENTARY ANGLE (shapes tone only — do not invent facts):\n"
+            f"  {angle['title']}: {angle['core_take']}\n"
+            f"  Style: {angle['style']}"
+        )
+
+    # Assign titles for prompt markers (pad if fewer than 5)
+    padded = (top5 + [{"title": "Unknown Entry"}] * 5)[:5]
+    prompt = _MYSTERY_TOP5_PROMPT.format(
+        topic_title=topic_title,
+        entry5_title=padded[0]["title"],
+        entry4_title=padded[1]["title"],
+        entry3_title=padded[2]["title"],
+        entry2_title=padded[3]["title"],
+        entry1_title=padded[4]["title"],
+        entries_block=entries_block,
+        angle_block=angle_block,
+    )
+
+    topic_id = topic.get("topic_id", "mystery")
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+    openai_key = os.getenv("OPENAI_API_KEY")
+
+    # Try Anthropic first (primary for creative writing)
+    if anthropic_key:
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=anthropic_key)
+            response = client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=4000,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            tokens_used = response.usage.input_tokens + response.usage.output_tokens
+            log_pipeline(topic_id, "mystery_script_writing", "anthropic/claude-sonnet-4-6",
+                         tokens_used)
+
+            raw = response.content[0].text.strip()
+            raw = re.sub(r"^```(?:json)?\s*", "", raw)
+            raw = re.sub(r"\s*```$", "", raw)
+            result = json.loads(raw)
+
+            if "script" in result and "entries" in result:
+                print("[OK] Mystery script written by Claude")
+                return result
+
+        except Exception as e:
+            log.warning(f"Claude mystery script failed: {e} — trying OpenAI.")
+
+    # Fallback: OpenAI
+    if openai_key:
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=openai_key)
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=4000,
+            )
+            log_pipeline(topic_id, "mystery_script_writing", "openai/gpt-4o-mini",
+                         response.usage.total_tokens)
+
+            raw = response.choices[0].message.content.strip()
+            raw = re.sub(r"^```(?:json)?\s*", "", raw)
+            raw = re.sub(r"\s*```$", "", raw)
+            result = json.loads(raw)
+
+            if "script" in result and "entries" in result:
+                print("[OK] Mystery script written by OpenAI (fallback)")
+                return result
+
+        except Exception as e:
+            log.warning(f"OpenAI mystery script also failed: {e} — using fallback.")
+
+    # Hard fallback: minimal non-AI script
+    log.warning("All AI script generation failed — building minimal fallback script.")
+    fallback_script_parts = [
+        "[COLD OPEN] Something happened... and nobody can explain it.",
+        "[INTRO] These are five of the most unsettling mysteries ever documented.",
+    ]
+    fallback_entries = []
+    for i, entry in enumerate(top5):
+        num = 5 - i
+        marker = f"[NUMBER {num}: {entry['title']}]"
+        fallback_script_parts.append(f"{marker} {entry['summary'][:300]}")
+        fallback_entries.append({
+            "number": num,
+            "title": entry["title"],
+            "script_section": entry["summary"][:300],
+            "media_query": entry["title"],
+        })
+    fallback_script_parts.append("[OUTRO] The truth is still out there. Subscribe for more.")
+
+    return {
+        "script": "\n\n".join(fallback_script_parts),
+        "entries": fallback_entries,
+        "keywords": ["mystery", "dark", "forest", "abandoned", "shadow"],
+        "titles": [
+            f"Top 5 {topic_title} (You Won't Sleep After This)",
+            f"These 5 Mysteries Have Never Been Solved...",
+            f"The Most Disturbing {topic_title} Ever Documented",
+        ],
+    }
+
+
 def build_script(post: dict, angle: dict | None = None) -> dict:
     """
     Takes a post dict and returns:
