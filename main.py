@@ -38,6 +38,7 @@ from modules.beat_mapper import (
     store_beats,
     log_beats,
     query_beat_performance,
+    review_and_approve_beats,
 )
 
 # ─── CH1 imports ──────────────────────────────────────────────────────────────
@@ -165,15 +166,17 @@ def run_story():
         log_beats(post["id"], beats)
         query_beat_performance()
         print(f"[OK] {len(beats)} beats mapped ({beats_result['total_duration']}s total)")
-        for i, b in enumerate(beats, 1):
-            print(f"     {i:2d}. [{b['emotion']:12s}] {b['name']} — {b['visual_direction'][:60]}")
+
+        # Review & approve beats before fetching any clips
+        beats_result = review_and_approve_beats(post["id"], beats_result)
+        beats = beats_result["beats"]
 
         # 7. TTS
         print(f"\n[TTS] Generating audio ({config.TTS_ENGINE})...")
         audio_path = generate_audio(script, post["id"])
         print(f"[OK] Audio saved: {audio_path}")
 
-        # 8. B-roll
+        # 8. B-roll — only after beat approval
         print(f"\n[BROLL] Fetching beat-mapped clips ({len(beats)} beats)...")
         beat_clips = get_clips_for_beats(beats)
         print(f"[OK] {len(beat_clips)} clips ready")
@@ -296,6 +299,19 @@ def run_mystery():
         query_beat_performance()
         print(f"[OK] {len(beats)} beats mapped ({beats_result['total_duration']}s estimated)")
 
+        # Review & approve beats before fetching any clips
+        beats_result = review_and_approve_beats(topic_id, beats_result)
+        beats = beats_result["beats"]
+
+        # 7b. Attach real media items to real_media beats
+        print("\n[7b] MEDIA ATTACH — Linking real media items to beats")
+        beats = _attach_media_items(beats, topic)
+        beats_result["beats"] = beats
+        real_media_count = sum(
+            1 for b in beats if b.get("visual_source") == "real_media"
+        )
+        print(f"[OK] {real_media_count} real_media beat(s) wired to media items")
+
         # 8. Number frames — generate countdown cards
         print("\n[8/13] FRAMES — Generate countdown entry cards")
         if script_entries:
@@ -322,21 +338,39 @@ def run_mystery():
         audio_path = generate_audio(script, topic_id)
         print(f"[OK] Audio: {audio_path}")
 
-        # 11. B-roll — fetch real footage + Pexels fallback
-        print(f"\n[11/13] BROLL — Fetch beat-mapped clips ({len(beats)} beats)")
-        # Use mystery-themed keywords to guide Pexels search
-        mystery_beats = _inject_mystery_keywords(beats, keywords)
-        beat_clips = get_clips_for_beats(mystery_beats)
-        print(f"[OK] {len(beat_clips)} clips ready")
+        # 11. B-roll — only for broll beats; real_media beats skip Pexels
+        broll_beats = [b for b in beats if b.get("visual_source", "broll") == "broll"]
+        print(f"\n[11/13] BROLL — Fetch Pexels clips "
+              f"({len(broll_beats)} broll beats / {len(beats)} total)")
+
+        if broll_beats:
+            enhanced_broll = _inject_mystery_keywords(broll_beats, keywords)
+            broll_clips    = get_clips_for_beats(enhanced_broll, video_id=topic_id)
+
+            # Stitch paths back to the original broll beats (order-preserved)
+            from collections import deque
+            clip_queue = deque(broll_clips)
+            for beat in beats:
+                if beat.get("visual_source", "broll") == "broll":
+                    clip = clip_queue.popleft() if clip_queue else None
+                    if clip:
+                        beat["path"] = clip["path"]
+
+            print(f"[OK] {len(broll_clips)} broll clips fetched and attached")
+        else:
+            print("[OK] No broll beats — all real media")
+
+        # Pass the full beats list to the editor (broll beats have path,
+        # real_media beats have media_item)
+        beat_clips = beats
 
         # 12. Create mystery video — assemble with music
         print("\n[12/13] EDIT — Assemble mystery video")
-        # Build a synthetic post dict for editor compatibility
         post = {
-            "id": topic_id,
-            "title": final_title,
-            "subreddit": "mystery",
-            "score": 0,
+            "id":          topic_id,
+            "title":       final_title,
+            "subreddit":   "mystery",
+            "score":       0,
             "source_type": "mystery",
         }
         video_path = create_mystery_video(
@@ -363,6 +397,84 @@ def run_mystery():
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
+
+def _attach_media_items(beats: list, topic: dict) -> list:
+    """
+    For every beat with visual_source == "real_media", find the matching
+    media_item from topic entries and attach it to beat["media_item"].
+
+    Matching logic:
+      - script_position "entry_N" → entry_number N
+      - beat name "real_photo"   → media item type "photo"
+      - beat name "real_video"   → media item type "video"
+      - beat name "real_audio"   → media item type "audio"
+
+    Degrades gracefully: if no matching media item is found, the beat's
+    visual_source is reset to "broll" so it gets a Pexels clip instead.
+    """
+    entries = topic.get("entries", [])
+
+    # Build lookup: entry_number → [media_items]
+    entry_media: dict[int, list] = {}
+    for entry in entries:
+        n = entry.get("entry_number", 0)
+        entry_media[n] = entry.get("media_items", [])
+
+    for beat in beats:
+        if beat.get("visual_source") != "real_media":
+            continue
+
+        # Derive entry number from script_position (e.g. "entry_3" → 3)
+        pos          = beat.get("script_position", "")
+        entry_number = 0
+        for n in range(1, 6):
+            if f"entry_{n}" in pos:
+                entry_number = n
+                break
+
+        beat_name    = beat.get("name", "").lower()
+        desired_type = None
+        if "real_photo" in beat_name:
+            desired_type = "photo"
+        elif "real_video" in beat_name:
+            desired_type = "video"
+        elif "real_audio" in beat_name:
+            desired_type = "audio"
+
+        candidates = entry_media.get(entry_number, [])
+        if not candidates:
+            # No entry found — search all entries as fallback
+            candidates = [m for items in entry_media.values() for m in items]
+
+        if desired_type:
+            typed = [m for m in candidates if m.get("type") == desired_type]
+            match = typed[0] if typed else (candidates[0] if candidates else None)
+        else:
+            match = candidates[0] if candidates else None
+
+        if match:
+            beat["media_item"] = match
+            # Populate caption_text for audio beats if transcript available
+            if beat_name == "real_audio" and not beat.get("caption_text"):
+                transcript = match.get("transcript", "")
+                credit     = match.get("credit", "Audio Recording")
+                beat["caption_text"] = (
+                    transcript[:300] if transcript
+                    else f"[ Audio Recording ]\n{credit}"
+                )
+            print(f"  [MEDIA ATTACH] Beat '{beat.get('name')}' "
+                  f"(entry {entry_number}) → {match['type']} — {match['credit'][:50]}")
+        else:
+            # No media available — degrade to broll
+            beat["visual_source"]    = "broll"
+            beat["narration_active"] = True
+            beat["music_active"]     = True
+            beat["music_volume"]     = 0.10
+            print(f"  [MEDIA ATTACH] Beat '{beat.get('name')}' — no media found, "
+                  f"degraded to broll")
+
+    return beats
+
 
 def _inject_mystery_keywords(beats: list, extra_keywords: list) -> list:
     """
