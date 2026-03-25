@@ -14,7 +14,13 @@ import re
 import random
 import numpy as np
 import config
-from moviepy import (
+
+# MoviePy 1.x references Image.ANTIALIAS which was removed in Pillow 10+.
+import PIL.Image
+if not hasattr(PIL.Image, "ANTIALIAS"):
+    PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
+
+from moviepy.editor import (
     VideoFileClip,
     AudioFileClip,
     CompositeVideoClip,
@@ -58,7 +64,7 @@ def _ken_burns(clip, zoom_ratio: float = 1.05, direction: str = "in",
         pil  = pil.crop((left, top, left + w_out, top + h_out))
         return np.array(pil)
 
-    return clip.transform(zoom_frame)
+    return clip.fl(zoom_frame)
 
 
 # Emotion → (zoom_ratio, preferred_direction)
@@ -132,20 +138,20 @@ def _make_segment(clip_path: str, seg_duration: float,
     pan:          horizontal drift passed to _ken_burns (0.0 = center lock).
     """
     clip = VideoFileClip(clip_path).without_audio()
-    clip = clip.resized((config.VIDEO_WIDTH, config.VIDEO_HEIGHT))
+    clip = clip.resize((config.VIDEO_WIDTH, config.VIDEO_HEIGHT))
 
     # Apply start offset for visual variety on repeated clips
     if start_offset > 0 and clip.duration > seg_duration:
         max_offset = clip.duration - seg_duration
         offset     = min(start_offset * clip.duration, max_offset)
-        clip       = clip.subclipped(offset)
+        clip       = clip.subclip(offset)
 
     # Loop to cover seg_duration if the clip is shorter
     if clip.duration < seg_duration:
         loops = int(seg_duration / clip.duration) + 1
         clip  = concatenate_videoclips([clip] * loops)
 
-    clip = clip.subclipped(0, seg_duration)
+    clip = clip.subclip(0, seg_duration)
     clip = _ken_burns(clip, zoom_ratio=zoom_ratio, direction=direction, pan=pan)
     return clip
 
@@ -243,7 +249,7 @@ def _make_photo_segment(media_item: dict, duration: float):
                               left + config.VIDEO_WIDTH,
                               top  + config.VIDEO_HEIGHT))
 
-            from moviepy import ImageClip
+            from moviepy.editor import ImageClip
             clip = ImageClip(np.array(img), duration=duration)
             clip = _ken_burns(clip, zoom_ratio=1.08)
             print(f"    [PHOTO] Loaded: {os.path.basename(local_path)}")
@@ -382,7 +388,7 @@ def _darken_clip(clip, factor: float = 0.72):
     """
     def darken(get_frame, t):
         return np.clip(get_frame(t).astype(np.float32) * factor, 0, 255).astype(np.uint8)
-    return clip.transform(darken)
+    return clip.fl(darken)
 
 
 def _apply_vignette(clip):
@@ -406,7 +412,7 @@ def _apply_vignette(clip):
         frame[:, :, 2] *= mask
         return np.clip(frame, 0, 255).astype(np.uint8)
 
-    return clip.transform(vignette_frame)
+    return clip.fl(vignette_frame)
 
 
 def _make_beat_segment(beat: dict, seg_dur: float, fallback_clips: list,
@@ -489,7 +495,7 @@ def _build_music_track_enveloped(music_path: str, envelope: list,
     raw       = AudioFileClip(music_path)
     raw_dur   = raw.duration
     loops     = int(total_duration / raw_dur) + 2
-    extended  = concatenate_audioclips([raw] * loops).subclipped(0, total_duration)
+    extended  = concatenate_audioclips([raw] * loops).subclip(0, total_duration)
 
     vol_segs  = []
     for start_t, dur, vol in envelope:
@@ -497,7 +503,7 @@ def _build_music_track_enveloped(music_path: str, envelope: list,
         seg_d = end_t - start_t
         if seg_d < 0.01:
             continue
-        seg = extended.subclipped(start_t, end_t).with_volume_scaled(
+        seg = extended.subclip(start_t, end_t).with_volume_scaled(
             max(0.0, float(vol))
         )
         vol_segs.append(seg)
@@ -550,11 +556,11 @@ def create_video_from_beats(audio_path: str, beat_clips: list, post: dict) -> st
 
     background = concatenate_videoclips(segments)
     background = background.with_volume_scaled(config.BROLL_VOLUME)
-    final = background.with_audio(audio)
+    final = background.set_audio(audio)
 
     # Hook title card — larger font, fades in/out for visual punch
     try:
-        from moviepy import vfx as _vfx
+        from moviepy.editor import vfx as _vfx
         title_text    = post["title"]
         if len(title_text) > 80:
             title_text = title_text[:77] + "..."
@@ -711,9 +717,9 @@ def create_mystery_video(
                 if card_dur > 0.1:
                     try:
                         card_clip = VideoFileClip(card_path).without_audio()
-                        card_clip = card_clip.resized(
+                        card_clip = card_clip.resize(
                             (config.VIDEO_WIDTH, config.VIDEO_HEIGHT))
-                        card_clip = card_clip.subclipped(0, card_dur)
+                        card_clip = card_clip.subclip(0, card_dur)
                         segments.append(card_clip)
                         music_envelope.append((elapsed, card_dur, MUSIC_VOLUME_DUCK))
                         elapsed += card_dur
@@ -800,10 +806,10 @@ def create_mystery_video(
     background = concatenate_videoclips(segments)
 
     if background.duration > total_duration + 0.1:
-        background = background.subclipped(0, total_duration)
+        background = background.subclip(0, total_duration)
 
     # ── Build audio mix ───────────────────────────────────────────────────────
-    from moviepy import CompositeAudioClip
+    from moviepy.editor import CompositeAudioClip
 
     audio_layers = [narration]
 
@@ -825,7 +831,7 @@ def create_mystery_video(
                 if music_raw.duration < total_duration:
                     loops     = int(total_duration / music_raw.duration) + 1
                     music_raw = concatenate_audioclips([music_raw] * loops)
-                music_raw = music_raw.subclipped(0, total_duration)
+                music_raw = music_raw.subclip(0, total_duration)
                 music_raw = music_raw.with_volume_scaled(MUSIC_VOLUME)
                 music_raw = music_raw.audio_fadein(3.0).audio_fadeout(5.0)
                 audio_layers.append(music_raw)
@@ -837,7 +843,7 @@ def create_mystery_video(
         try:
             ra  = AudioFileClip(insert["path"])
             dur = min(ra.duration, insert["dur"])
-            ra  = ra.subclipped(0, dur).with_start(insert["start_t"])
+            ra  = ra.subclip(0, dur).with_start(insert["start_t"])
             audio_layers.append(ra)
             print(f"  [MYSTERY EDIT] Real audio insert at "
                   f"{insert['start_t']:.1f}s: {os.path.basename(insert['path'])}")
@@ -845,7 +851,7 @@ def create_mystery_video(
             print(f"  [WARN] Real audio insert failed: {e}")
 
     mixed = CompositeAudioClip(audio_layers)
-    final = background.with_audio(mixed)
+    final = background.set_audio(mixed)
 
     # ── Render ────────────────────────────────────────────────────────────────
     print(f"  [MYSTERY EDIT] Rendering -> {output_path}...")
@@ -908,7 +914,7 @@ def create_video(audio_path: str, clip_paths: list, post: dict) -> str:
 
     background = concatenate_videoclips(segments)
     background = background.with_volume_scaled(config.BROLL_VOLUME)
-    final = background.with_audio(audio)
+    final = background.set_audio(audio)
 
     # Subtle title card for first 5 seconds
     try:

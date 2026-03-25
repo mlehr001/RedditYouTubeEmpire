@@ -6,11 +6,12 @@
     ],
     "emotion": "shock",
     "beat_position": "cold_open",
-    "times_used": 1,
-    "last_used": "2026-03-24T00:27:19.085347",
+    "times_used": 2,
+    "last_used": "2026-03-25T21:45:56.850229",
     "quality_score": 3.0,
     "video_history": [
-      "alien_sightings_20260324_001945"
+      "alien_sightings_20260324_001945",
+      "alien_sightings_20260325_214125"
     ]
   },
   "6011520.mp4": {
@@ -20,11 +21,12 @@
     ],
     "emotion": "curiosity",
     "beat_position": "intro",
-    "times_used": 1,
-    "last_used": "2026-03-24T00:27:22.692103",
+    "times_used": 2,
+    "last_used": "2026-03-25T21:45:56.841507",
     "quality_score": 3.0,
     "video_history": [
-      "alien_sightings_20260324_001945"
+      "alien_sightings_20260324_001945",
+      "alien_sightings_20260325_214125"
     ]
   },
   "6266651.mp4": {
@@ -34,11 +36,12 @@
     ],
     "emotion": "tension",
     "beat_position": "entry_3",
-    "times_used": 1,
-    "last_used": "2026-03-24T00:27:25.458992",
+    "times_used": 2,
+    "last_used": "2026-03-25T21:45:56.855460",
     "quality_score": 3.0,
     "video_history": [
-      "alien_sightings_20260324_001945"
+      "alien_sightings_20260324_001945",
+      "alien_sightings_20260325_214125"
     ]
   },
   "8104370.mp4": {
@@ -48,11 +51,12 @@
     ],
     "emotion": "suspense",
     "beat_position": "entry_2",
-    "times_used": 1,
-    "last_used": "2026-03-24T00:27:32.034191",
+    "times_used": 2,
+    "last_used": "2026-03-25T22:15:18.226227",
     "quality_score": 2.6,
     "video_history": [
-      "alien_sightings_20260324_001945"
+      "alien_sightings_20260324_001945",
+      "alien_sightings_20260325_220619"
     ]
   },
   "5382542.mp4": {
@@ -62,11 +66,12 @@
     ],
     "emotion": "relief",
     "beat_position": "outro",
-    "times_used": 1,
-    "last_used": "2026-03-24T00:27:34.713471",
+    "times_used": 2,
+    "last_used": "2026-03-25T21:45:56.844553",
     "quality_score": 3.0,
     "video_history": [
-      "alien_sightings_20260324_001945"
+      "alien_sightings_20260324_001945",
+      "alien_sightings_20260325_214125"
     ]
   },
   "4588486.mp4": {
@@ -76,11 +81,12 @@
     ],
     "emotion": "shock",
     "beat_position": "cold_open",
-    "times_used": 1,
-    "last_used": "2026-03-24T00:27:38.320565",
+    "times_used": 2,
+    "last_used": "2026-03-25T21:30:02.001325",
     "quality_score": 3.0,
     "video_history": [
-      "alien_sightings_20260324_001945"
+      "alien_sightings_20260324_001945",
+      "alien_sightings_20260325_212325"
     ]
   },
   "7140928.mp4": {
@@ -90,11 +96,12 @@
     ],
     "emotion": "curiosity",
     "beat_position": "intro",
-    "times_used": 1,
-    "last_used": "2026-03-24T00:27:42.611415",
+    "times_used": 2,
+    "last_used": "2026-03-25T21:45:56.847395",
     "quality_score": 3.0,
     "video_history": [
-      "alien_sightings_20260324_001945"
+      "alien_sightings_20260324_001945",
+      "alien_sightings_20260325_214125"
     ]
   },
   "34429946.mp4": {
@@ -104,11 +111,12 @@
     ],
     "emotion": "tension",
     "beat_position": "entry_3",
-    "times_used": 1,
-    "last_used": "2026-03-24T00:27:48.070682",
+    "times_used": 2,
+    "last_used": "2026-03-25T21:45:56.857941",
     "quality_score": 3.0,
     "video_history": [
-      "alien_sightings_20260324_001945"
+      "alien_sightings_20260324_001945",
+      "alien_sightings_20260325_214125"
     ]
   },
   "4632642.mp4": {
@@ -118,11 +126,12 @@
     ],
     "emotion": "suspense",
     "beat_position": "entry_2",
-    "times_used": 1,
-    "last_used": "2026-03-24T00:27:51.185918",
+    "times_used": 2,
+    "last_used": "2026-03-25T21:45:56.852917",
     "quality_score": 3.0,
     "video_history": [
-      "alien_sightings_20260324_001945"
+      "alien_sightings_20260324_001945",
+      "alien_sightings_20260325_214125"
     ]
   },
   "5473795.mp4": {
@@ -132,16 +141,338 @@
     ],
     "emotion": "relief",
     "beat_position": "outro",
-    "times_used": 1,
-    "last_used": "2026-03-24T00:27:54.287937",
+    "times_used": 2,
+    "last_used": "2026-03-25T21:45:56.860113",
     "quality_score": 3.0,
     "video_history": [
-      "alien_sightings_20260324_001945"
+      "alien_sightings_20260324_001945",
+      "alien_sightings_20260325_214125"
     ]
   },
   "_meta": {
     "recent_videos": [
-      "alien_sightings_20260324_001945"
+      "alien_sightings_20260324_001945",
+      "alien_sightings_20260325_195857",
+      "alien_sightings_20260325_204821",
+      "alien_sightings_20260325_212325",
+      "alien_sightings_20260325_214125",
+      "alien_sightings_20260325_220619"
+    ]
+  },
+  "18972999.mp4": {
+    "filename": "18972999.mp4",
+    "keywords_used": [
+      "government ominous moody cinematic"
+    ],
+    "emotion": "foreboding",
+    "beat_position": "cold_open",
+    "times_used": 2,
+    "last_used": "2026-03-25T20:53:05.240540",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_195857",
+      "alien_sightings_20260325_204821"
+    ]
+  },
+  "31916832.mp4": {
+    "filename": "31916832.mp4",
+    "keywords_used": [
+      "countdown mysterious cinematic detail"
+    ],
+    "emotion": "intrigue",
+    "beat_position": "intro",
+    "times_used": 2,
+    "last_used": "2026-03-25T22:15:18.214332",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_195857",
+      "alien_sightings_20260325_220619"
+    ]
+  },
+  "34786893.mp4": {
+    "filename": "34786893.mp4",
+    "keywords_used": [
+      "smartphone uncomfortable uneasy closeup"
+    ],
+    "emotion": "discomfort",
+    "beat_position": "entry_5",
+    "times_used": 2,
+    "last_used": "2026-03-25T22:15:18.217119",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_195857",
+      "alien_sightings_20260325_220619"
+    ]
+  },
+  "30638895.mp4": {
+    "filename": "30638895.mp4",
+    "keywords_used": [
+      "congress uneasy dark aerial"
+    ],
+    "emotion": "unease",
+    "beat_position": "entry_4",
+    "times_used": 2,
+    "last_used": "2026-03-25T22:15:18.227847",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_195857",
+      "alien_sightings_20260325_220619"
+    ]
+  },
+  "10464564.mp4": {
+    "filename": "10464564.mp4",
+    "keywords_used": [
+      "podium dramatic confrontation reaction"
+    ],
+    "emotion": "outrage",
+    "beat_position": "entry_3",
+    "times_used": 2,
+    "last_used": "2026-03-25T22:15:18.222257",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_195857",
+      "alien_sightings_20260325_220619"
+    ]
+  },
+  "10349050.mp4": {
+    "filename": "10349050.mp4",
+    "keywords_used": [
+      "server tension slow motion"
+    ],
+    "emotion": "suspense",
+    "beat_position": "entry_2",
+    "times_used": 2,
+    "last_used": "2026-03-25T22:15:18.219845",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_195857",
+      "alien_sightings_20260325_220619"
+    ]
+  },
+  "34390025.mp4": {
+    "filename": "34390025.mp4",
+    "keywords_used": [
+      "night eerie quiet aerial"
+    ],
+    "emotion": "eerie_calm",
+    "beat_position": "outro",
+    "times_used": 2,
+    "last_used": "2026-03-25T22:15:18.224282",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_195857",
+      "alien_sightings_20260325_220619"
+    ]
+  },
+  "34061737.mp4": {
+    "filename": "34061737.mp4",
+    "keywords_used": [
+      "fog ominous moody cinematic"
+    ],
+    "emotion": "foreboding",
+    "beat_position": "cold_open",
+    "times_used": 1,
+    "last_used": "2026-03-25T20:52:59.194612",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_204821"
+    ]
+  },
+  "3252427.mp4": {
+    "filename": "3252427.mp4",
+    "keywords_used": [
+      "scrolling uncomfortable uneasy aerial"
+    ],
+    "emotion": "discomfort",
+    "beat_position": "entry_5",
+    "times_used": 1,
+    "last_used": "2026-03-25T20:53:12.020109",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_204821"
+    ]
+  },
+  "34993379.mp4": {
+    "filename": "34993379.mp4",
+    "keywords_used": [
+      "handwritten uneasy dark closeup"
+    ],
+    "emotion": "unease",
+    "beat_position": "entry_4",
+    "times_used": 2,
+    "last_used": "2026-03-25T21:29:33.873969",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_204821",
+      "alien_sightings_20260325_212325"
+    ]
+  },
+  "4480390.mp4": {
+    "filename": "4480390.mp4",
+    "keywords_used": [
+      "courtroom dramatic confrontation aerial"
+    ],
+    "emotion": "outrage",
+    "beat_position": "entry_3",
+    "times_used": 1,
+    "last_used": "2026-03-25T20:53:26.505281",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_204821"
+    ]
+  },
+  "3253796.mp4": {
+    "filename": "3253796.mp4",
+    "keywords_used": [
+      "polaroid curious searching closeup"
+    ],
+    "emotion": "curiosity",
+    "beat_position": "entry_2",
+    "times_used": 1,
+    "last_used": "2026-03-25T20:53:33.810477",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_204821"
+    ]
+  },
+  "7989642.mp4": {
+    "filename": "7989642.mp4",
+    "keywords_used": [
+      "Capitol dramatic waiting cinematic"
+    ],
+    "emotion": "anticipation",
+    "beat_position": "entry_1",
+    "times_used": 1,
+    "last_used": "2026-03-25T20:53:41.581853",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_204821"
+    ]
+  },
+  "10541151.mp4": {
+    "filename": "10541151.mp4",
+    "keywords_used": [
+      "classified dramatic intense detail"
+    ],
+    "emotion": "shock",
+    "beat_position": "entry_1",
+    "times_used": 1,
+    "last_used": "2026-03-25T20:53:48.823890",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_204821"
+    ]
+  },
+  "29989413.mp4": {
+    "filename": "29989413.mp4",
+    "keywords_used": [
+      "silhouette unsettled mysterious aerial"
+    ],
+    "emotion": "unresolved",
+    "beat_position": "outro",
+    "times_used": 1,
+    "last_used": "2026-03-25T20:53:56.736593",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_204821"
+    ]
+  },
+  "6004633.mp4": {
+    "filename": "6004633.mp4",
+    "keywords_used": [
+      "fog ominous moody cinematic"
+    ],
+    "emotion": "foreboding",
+    "beat_position": "cold_open",
+    "times_used": 1,
+    "last_used": "2026-03-25T21:29:17.046661",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_212325"
+    ]
+  },
+  "7764347.mp4": {
+    "filename": "7764347.mp4",
+    "keywords_used": [
+      "corkboard mysterious cinematic detail"
+    ],
+    "emotion": "intrigue",
+    "beat_position": "intro",
+    "times_used": 1,
+    "last_used": "2026-03-25T21:29:25.206708",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_212325"
+    ]
+  },
+  "7688960.mp4": {
+    "filename": "7688960.mp4",
+    "keywords_used": [
+      "monitor uncomfortable uneasy aerial"
+    ],
+    "emotion": "discomfort",
+    "beat_position": "entry_5",
+    "times_used": 1,
+    "last_used": "2026-03-25T21:29:30.024875",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_212325"
+    ]
+  },
+  "4477805.mp4": {
+    "filename": "4477805.mp4",
+    "keywords_used": [
+      "courtroom dramatic confrontation reaction"
+    ],
+    "emotion": "outrage",
+    "beat_position": "entry_3",
+    "times_used": 1,
+    "last_used": "2026-03-25T21:29:41.263946",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_212325"
+    ]
+  },
+  "7664510.mp4": {
+    "filename": "7664510.mp4",
+    "keywords_used": [
+      "polaroid curious searching detail"
+    ],
+    "emotion": "curiosity",
+    "beat_position": "entry_2",
+    "times_used": 1,
+    "last_used": "2026-03-25T21:29:48.661837",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_212325"
+    ]
+  },
+  "36408489.mp4": {
+    "filename": "36408489.mp4",
+    "keywords_used": [
+      "Capitol tension slow motion"
+    ],
+    "emotion": "suspense",
+    "beat_position": "entry_1",
+    "times_used": 1,
+    "last_used": "2026-03-25T21:29:56.624016",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_212325"
+    ]
+  },
+  "9114789.mp4": {
+    "filename": "9114789.mp4",
+    "keywords_used": [
+      "starfield eerie quiet aerial"
+    ],
+    "emotion": "eerie_calm",
+    "beat_position": "outro",
+    "times_used": 1,
+    "last_used": "2026-03-25T21:30:07.699659",
+    "quality_score": 3.0,
+    "video_history": [
+      "alien_sightings_20260325_212325"
     ]
   }
 }

@@ -28,8 +28,8 @@ SKIP_USED_POSTS = True
 
 # ─── Script Settings ──────────────────────────────────────────────────────────
 
-# Max words in the final TTS script (keep videos under ~10 min)
-MAX_SCRIPT_WORDS = 1200
+# Max words in the final TTS script (target ~15 min at 200 wpm)
+MAX_SCRIPT_WORDS = 3000
 
 # Conversational intro — sets TikTok/YouTube Shorts tone
 INTRO_TEMPLATE = "So this person posts to r/{subreddit}... and it gets wild fast."

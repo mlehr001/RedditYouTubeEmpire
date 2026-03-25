@@ -39,13 +39,19 @@ def _trim_to_word_limit(text: str, max_words: int) -> str:
 
 _AI_PROMPT_BASE = """\
 You are a YouTube storytelling narrator — think "bedtime stories for drama addicts."
-Your job is to turn a raw Reddit post into a gripping, spoken-word narration script.
+Your job is to turn a raw Reddit post into a gripping, long-form spoken-word narration script.
+
+LENGTH REQUIREMENT — THIS IS MANDATORY:
+- The script field MUST be 2800–3000 words. Not 500. Not 1000. 2800–3000 words minimum.
+- Expand scenes. Linger on the emotional beats. Let tension breathe.
+- If the source story is short, fill out the context, the character's internal state, the setting, the reactions.
+- Do NOT summarize. Tell it like you're sitting across from someone at 2am.
 
 REWRITING RULES:
-- You MAY rewrite, condense, and restructure the story for better pacing
-- Preserve all real facts and events — do not invent new ones or change outcomes
-- Cut filler, Reddit-speak, and backstory that doesn't serve tension
-- Every sentence should pull the listener forward
+- You MAY rewrite, expand, and restructure the story for better pacing
+- Preserve all real facts and events — do not invent new plot points or change outcomes
+- Cut Reddit-speak but expand emotional depth, not compress it
+- Every paragraph should deepen tension or move the story forward
 
 VOICE & PACING:
 - Sound like a person talking, not a news anchor reading
@@ -54,18 +60,22 @@ VOICE & PACING:
 - Pauses: use "..." mid-sentence when the listener needs a beat
 - Emphasis: occasional ALL CAPS on key words (e.g. "she had NO idea")
 - No formal language. Contractions always. "He didn't" not "He did not."
+- Use filler beats naturally: "And look —", "Here's the thing.", "I'm not kidding."
 
-STRUCTURE (follow this order):
+STRUCTURE (follow this expanded order):
 1. Hook (first 8–10 seconds) — drop into the most tension-filled moment OR ask a question that makes skipping impossible. Do NOT start with "So this person..."
-2. Setup — who, where, what's at stake. Fast. 2–3 sentences max.
-3. Escalation — things get complicated. Build dread or disbelief.
-4. Turning point — the moment everything changes.
-5. Fallout — consequence, reaction, resolution (or lack of one).
-6. Outro — append the provided outro exactly as given.
+2. Setup — who, where, what's at stake. Take your time. 3–5 sentences. Make us care.
+3. Background — what led to this. Fill in the history, the relationship, the context.
+4. Escalation — things start going wrong. Build dread or disbelief across multiple beats.
+5. The moment — describe the turning point in slow motion. Don't rush it.
+6. Fallout — reactions, consequences, the aftermath. Let it land.
+7. Resolution — what happened in the end. Or the lack of one — which is sometimes worse.
+8. Outro — append the provided outro exactly as given.
 
 TRANSITIONS (use naturally, not robotically):
 "And here's where it gets weird.", "Nobody expected what happened next.",
-"Wait — it gets worse.", "So she does the only logical thing.", "Of course it backfires."
+"Wait — it gets worse.", "So she does the only logical thing.", "Of course it backfires.",
+"Now here's the part that broke me.", "And I need you to understand something.", "This is where it gets dark."
 
 Then separately extract:
 - keywords: 5–8 single visual words for b-roll (e.g. "phone", "argument", "office", "night", "car"). No phrases.
@@ -97,6 +107,25 @@ def _build_system_prompt(angle: dict | None) -> str:
     return _AI_PROMPT_BASE + angle_block
 
 
+def _extract_json_robust(raw: str) -> dict | None:
+    """Parse JSON from AI response, tolerating leading/trailing prose."""
+    raw = re.sub(r"^```(?:json)?\s*", "", raw.strip())
+    raw = re.sub(r"\s*```$", "", raw)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+    # Find outermost JSON object
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start != -1 and end > start:
+        try:
+            return json.loads(raw[start:end + 1])
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
 def _ai_format(post: dict, body: str, angle: dict | None = None) -> dict | None:
     """
     Calls OpenAI to format the script and extract keywords + titles.
@@ -108,16 +137,19 @@ def _ai_format(post: dict, body: str, angle: dict | None = None) -> dict | None:
         return None
 
     try:
+        import httpx
         from openai import OpenAI
-        client = OpenAI(api_key=api_key)
+        # Explicit httpx client avoids proxy auto-detection errors in some envs
+        client = OpenAI(api_key=api_key, http_client=httpx.Client())
 
         system_prompt = _build_system_prompt(angle)
 
         user_content = (
             f"Subreddit: r/{post['subreddit']}\n"
             f"Original title: {post['title']}\n\n"
-            f"--- SOURCE STORY (rewrite for narration — preserve all real facts) ---\n{body}\n---\n\n"
-            f"Outro to append: {config.OUTRO}"
+            f"--- SOURCE STORY (expand into 2800–3000 word narration — preserve all real facts) ---\n{body}\n---\n\n"
+            f"Outro to append: {config.OUTRO}\n\n"
+            f"Remember: script MUST be 2800–3000 words."
         )
 
         response = client.chat.completions.create(
@@ -127,21 +159,21 @@ def _ai_format(post: dict, body: str, angle: dict | None = None) -> dict | None:
                 {"role": "user", "content": user_content},
             ],
             temperature=0.7,
-            max_tokens=2000,
+            max_tokens=5000,
         )
 
         raw = response.choices[0].message.content.strip()
-        # Strip markdown fences if model added them
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```$", "", raw)
-        result = json.loads(raw)
+        result = _extract_json_robust(raw)
+        if result is None:
+            raise ValueError("Could not parse JSON from OpenAI response")
 
-        # Validate shape
         if not all(k in result for k in ("script", "keywords", "titles")):
             raise ValueError("Missing required keys in AI response")
         if len(result["titles"]) < 3:
             raise ValueError("Expected 3 titles")
 
+        word_count = len(result["script"].split())
+        log.info(f"OpenAI script generated: {word_count} words")
         return result
 
     except Exception as e:
@@ -182,37 +214,48 @@ def _fallback_format(post: dict, body: str) -> dict:
 
 
 _COMMENTARY_PROMPT = """\
-You are a YouTube commentary creator.
+You are a YouTube commentary creator. You write long-form, high-retention scripts.
 
-Write a high-retention script based on this angle.
+LENGTH REQUIREMENT — MANDATORY:
+- The script MUST be 2800–3000 words. This is non-negotiable.
+- Expand every point. Go deep. Add context, reactions, historical comparisons, follow-up takes.
+- Don't rush. A short script is a failed script.
 
 RULES:
-- conversational tone
-- slightly sarcastic or opinionated
-- short sentences
-- fast pacing
-- no fluff
-- no formal language
+- conversational tone, slightly sarcastic or opinionated
+- short punchy sentences for momentum, longer ones before a reveal
+- no formal language — contractions always
+- use "And look —", "Here's the thing.", "I'm not kidding." naturally
+- include pauses (...) for dramatic effect
+- emphasis: ALL CAPS on key words occasionally
 
-STRUCTURE:
-1. Hook (first 5-8 seconds, strong opinion or curiosity)
-2. Context (quick setup)
-3. Commentary (your take)
-4. Escalation (why this matters or gets worse)
-5. Punchline / takeaway
+STRUCTURE (use this expanded order):
+1. Hook (8–12 seconds) — strong opinion, wild fact, or question that stops the scroll
+2. Context — full background on the topic, take your time
+3. Your take — commentary, analysis, what this actually means
+4. Escalation — why this is bigger or worse than people realize
+5. Tangents that matter — related facts, patterns, comparisons (these add length and depth)
+6. Audience reaction / what most people get wrong
+7. Punchline / final takeaway that sticks
+8. Outro — close naturally, invite comments
 
 STYLE:
-- sound like a real person talking
-- use emphasis words (weird, insane, awkward, wild)
-- break sentences naturally
-- include pauses when appropriate (use ...)
-- avoid robotic phrasing
-
-OUTPUT:
-Only the final script, nothing else.
+- sound like a real person talking at 2am, not a press release
+- use emphasis words (insane, wild, absurd, broken, backwards)
+- break sentences at natural speech pauses
+- avoid robotic transitions
 
 Angle: {angle_title} — {angle_core_take}
-Topic: {topic_summary}"""
+
+Source material:
+{topic_summary}
+
+Return ONLY valid JSON (no markdown fences):
+{{
+  "script": "...",
+  "keywords": ["word1", "word2", ...],
+  "titles": ["Title 1", "Title 2", "Title 3"]
+}}"""
 
 
 def build_commentary_script(post: dict, angle: dict | None = None) -> dict:
@@ -234,21 +277,13 @@ def build_commentary_script(post: dict, angle: dict | None = None) -> dict:
 
     angle_title = angle["title"] if angle else "General commentary"
     angle_core_take = angle["core_take"] if angle else "Interesting story worth discussing"
-    topic_summary = f"{post['title'].strip()} — {_clean_text(post['body'])[:400]}"
+    cleaned_body = _clean_text(post["body"])
+    topic_summary = f"Title: {post['title'].strip()}\n\n{cleaned_body}"
 
-    system_prompt = _COMMENTARY_PROMPT.format(
+    prompt = _COMMENTARY_PROMPT.format(
         angle_title=angle_title,
         angle_core_take=angle_core_take,
         topic_summary=topic_summary,
-    )
-
-    user_content = (
-        'Return JSON only:\n'
-        '{\n'
-        '  "script": "...",\n'
-        '  "keywords": ["word1", "word2", ...],\n'
-        '  "titles": ["Title 1", "Title 2", "Title 3"]\n'
-        '}'
     )
 
     try:
@@ -257,27 +292,29 @@ def build_commentary_script(post: dict, angle: dict | None = None) -> dict:
 
         response = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=2000,
+            max_tokens=6000,
             messages=[
-                {"role": "user", "content": f"{system_prompt}\n\n{user_content}"},
+                {"role": "user", "content": prompt},
             ],
         )
 
         raw = response.content[0].text.strip()
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```$", "", raw)
-        result = json.loads(raw)
+        result = _extract_json_robust(raw)
+        if result is None:
+            raise ValueError("Could not parse JSON from Anthropic response")
 
         if not all(k in result for k in ("script", "keywords", "titles")):
             raise ValueError("Missing required keys in Anthropic response")
         if len(result["titles"]) < 3:
             raise ValueError("Expected 3 titles")
 
+        word_count = len(result["script"].split())
+        log.info(f"Claude commentary script generated: {word_count} words")
         return result
 
     except Exception as e:
         log.warning(f"Commentary script (Anthropic) failed: {e} — using fallback.")
-        return _fallback_format(post, _clean_text(post["body"]))
+        return _fallback_format(post, cleaned_body)
 
 
 _MYSTERY_TOP5_PROMPT = """\
@@ -392,7 +429,7 @@ def build_mystery_top5_script(
             client = anthropic.Anthropic(api_key=anthropic_key)
             response = client.messages.create(
                 model="claude-sonnet-4-6",
-                max_tokens=4000,
+                max_tokens=6000,
                 messages=[{"role": "user", "content": prompt}],
             )
             tokens_used = response.usage.input_tokens + response.usage.output_tokens
@@ -400,12 +437,13 @@ def build_mystery_top5_script(
                          tokens_used)
 
             raw = response.content[0].text.strip()
-            raw = re.sub(r"^```(?:json)?\s*", "", raw)
-            raw = re.sub(r"\s*```$", "", raw)
-            result = json.loads(raw)
+            result = _extract_json_robust(raw)
+            if result is None:
+                raise ValueError("Could not parse JSON from Claude mystery response")
 
             if "script" in result and "entries" in result:
-                print("[OK] Mystery script written by Claude")
+                word_count = len(result["script"].split())
+                print(f"[OK] Mystery script written by Claude ({word_count} words)")
                 return result
 
         except Exception as e:
@@ -414,24 +452,26 @@ def build_mystery_top5_script(
     # Fallback: OpenAI
     if openai_key:
         try:
+            import httpx
             from openai import OpenAI
-            client = OpenAI(api_key=openai_key)
+            client = OpenAI(api_key=openai_key, http_client=httpx.Client())
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.7,
-                max_tokens=4000,
+                max_tokens=6000,
             )
             log_pipeline(topic_id, "mystery_script_writing", "openai/gpt-4o-mini",
                          response.usage.total_tokens)
 
             raw = response.choices[0].message.content.strip()
-            raw = re.sub(r"^```(?:json)?\s*", "", raw)
-            raw = re.sub(r"\s*```$", "", raw)
-            result = json.loads(raw)
+            result = _extract_json_robust(raw)
+            if result is None:
+                raise ValueError("Could not parse JSON from OpenAI mystery response")
 
             if "script" in result and "entries" in result:
-                print("[OK] Mystery script written by OpenAI (fallback)")
+                word_count = len(result["script"].split())
+                print(f"[OK] Mystery script written by OpenAI fallback ({word_count} words)")
                 return result
 
         except Exception as e:

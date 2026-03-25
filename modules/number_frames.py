@@ -21,6 +21,11 @@ import logging
 
 import numpy as np
 
+# MoviePy 1.x references Image.ANTIALIAS which was removed in Pillow 10+.
+import PIL.Image
+if not hasattr(PIL.Image, "ANTIALIAS"):
+    PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
+
 log = logging.getLogger(__name__)
 
 FRAMES_DIR = os.path.join("assets", "frames")
@@ -178,7 +183,7 @@ def generate_number_card(number: int, title: str, force: bool = False) -> str:
     Returns:
         Absolute path to the generated .mp4 card file.
     """
-    from moviepy import ImageClip
+    from moviepy.editor import ImageClip
 
     os.makedirs(FRAMES_DIR, exist_ok=True)
     slug = _slugify(title)
