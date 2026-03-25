@@ -42,42 +42,48 @@ _SHOCK_HOLD = 1.5
 _SHOCK_EMOTIONS = {"shock", "reveal", "twist"}
 
 _PROMPT = """\
-You are a video editor.
+You are a video editor breaking a narration script into VISUAL BEATS for a YouTube storytelling video.
 
-Break this script into visual beats.
+A beat is a STORY MOMENT — where the emotional register shifts, something new is revealed, or the scene must visually change.
+A beat is NOT a sentence. Group related sentences into one beat when they serve the same emotional purpose.
+Target 8–14 beats for a full script. Cold open and outro get exactly 1 beat each.
 
 For each beat provide:
-1. Beat Name
-2. Emotion (tension, awkward, suspense, shock, reveal, relief, curiosity, dread, mystery, etc.)
-3. Visual Direction (what should be shown)
-4. Keywords for stock footage (3-5 single words, no phrases)
-5. Duration (3-5 seconds typical)
-6. Script Position — exactly where in the script this beat occurs.
-   Valid values: cold_open | intro | entry_5 | entry_4 | entry_3 | entry_2 | entry_1 | outro
-7. Script Excerpt — the first 40 words of the script section this beat covers (verbatim from the script).
-   This is shown to the human reviewer so they can verify the visual matches what is literally being said.
-8. Speaker Pace — based on sentence length in that section:
-   slow  → long sentences, dramatic pauses
-   medium → normal narration flow
-   fast  → punchy, short sentences, rapid delivery
+1. name — short label for this story moment: hook | setup | backstory | revelation | confrontation | escalation | turning_point | aftermath | dread | payoff
+2. emotion — the dominant feeling this moment creates. Choose from this hierarchy:
+   Opening:  unease | intrigue | foreboding | curiosity
+   Building: dread | suspense | discomfort | anticipation | paranoia
+   Peak:     shock | horror | outrage | betrayal | devastation | disgust
+   Fallout:  relief | vindication | melancholy | eerie_calm | unresolved
+3. visual_direction — a concrete, specific shot description. Name exactly what the camera sees.
+   GOOD: "slow zoom into a dark hallway from the doorway", "close-up of shaking hands gripping a phone screen"
+   BAD:  "atmospheric b-roll", "generic outdoor scene", "person reacting"
+4. scene_type — must be exactly one of: close-up | wide | reaction | environment | evidence
+5. keywords — 5–8 single words for stock footage search. Specific, not generic.
+   GOOD: ["payphone", "surveillance", "basement", "handwriting", "motel", "gravel"]
+   BAD:  ["man", "thing", "dark", "video", "person", "night"]
+6. duration — seconds (3–7 typical; 8–10 for major reveals; 2–3 for fast cuts)
+7. script_position — where in the script: cold_open | intro | entry_5 | entry_4 | entry_3 | entry_2 | entry_1 | outro
+8. script_excerpt — first 40 words verbatim from the section this beat covers
+9. speaker_pace — slow | medium | fast (based on sentence length and rhythm in that section)
 
-SPECIAL BEAT TYPES — use these names when the script references real evidence:
-- "real_photo" — script references a named historical photo, case file, evidence photo,
-  or missing person photo. Keywords should describe the photo subject.
-- "real_video" — script references real footage: surveillance camera, news archive,
-  declassified government footage, documentary clip. Keywords = ["footage", subject].
-- "real_audio" — script references an audio recording: 911 call, interview recording,
-  intercepted transmission, voicemail. Keywords = ["audio", source_name].
+SCENE TYPE RULES — enforce variety:
+- Never use the same scene_type twice in a row
+- cold_open: always "environment" or "evidence"
+- Climax (entry_1): prefer "evidence" or "close-up"
+- Outro: end on "wide" or "environment"
+- Do not stay with interior settings more than 2 consecutive beats
 
-RULES:
-- For each beat, identify exactly where in the script this moment occurs
-- Reference the actual words being spoken when choosing visuals
-- Match the visual to what is LITERALLY being described, not just the general emotion
-- Use real_photo / real_video / real_audio beat names ONLY when the script explicitly
-  references real evidence — do NOT use them for general descriptions
-- Vary shot types (close-up, wide, reaction)
-- No repetitive visuals
-- Keep it dynamic and engaging
+ANTI-REPETITION RULES:
+- No two consecutive beats with the same emotion
+- No two consecutive beats with the same scene_type
+- No two consecutive beats sharing 3+ keywords
+- Vary between interior/exterior settings across beats
+
+REAL EVIDENCE BEATS — use these name values ONLY when script explicitly references real evidence:
+- real_photo — named photo, case file, evidence photo, missing person photo
+- real_video — surveillance footage, news archive, documentary clip, declassified footage
+- real_audio — 911 call, interview recording, intercepted transmission
 
 Script: {script}"""
 
@@ -145,11 +151,14 @@ def _insert_followup_beats(beats: list) -> list:
         name = beat.get("name", "").lower()
 
         if name == "real_video":
+            parent_kws = beat.get("keywords", ["mystery", "dark"])
+            subject = parent_kws[1] if len(parent_kws) > 1 else parent_kws[0]
             followup = {
                 "name":             "discussing",
-                "emotion":          "curiosity",
-                "visual_direction": "atmospheric b-roll while narrator discusses footage",
-                "keywords":         beat.get("keywords", ["mystery", "dark"])[:3],
+                "emotion":          "unresolved",
+                "visual_direction": f"wide shot — environment related to {subject}, narrator voice-over continues",
+                "scene_type":       "wide",
+                "keywords":         parent_kws[:5],
                 "duration":         5,
                 "script_position":  beat.get("script_position", "intro"),
                 "script_excerpt":   "",
@@ -165,16 +174,19 @@ def _insert_followup_beats(beats: list) -> list:
             result.append(followup)
 
         elif name == "real_audio":
+            parent_kws = beat.get("keywords", ["mystery", "dark"])
+            subject = parent_kws[1] if len(parent_kws) > 1 else parent_kws[0]
             followup = {
                 "name":             "summary",
-                "emotion":          "mystery",
-                "visual_direction": "atmospheric b-roll while narrator summarises recording",
-                "keywords":         beat.get("keywords", ["mystery", "dark"])[:3],
+                "emotion":          "eerie_calm",
+                "visual_direction": f"close-up of {subject} — static frame, silence hangs",
+                "scene_type":       "close-up",
+                "keywords":         parent_kws[:5],
                 "duration":         5,
                 "script_position":  beat.get("script_position", "intro"),
                 "script_excerpt":   "",
-                "speaker_pace":     "medium",
-                "hold_duration":    _PACE_HOLD["medium"],
+                "speaker_pace":     "slow",
+                "hold_duration":    _PACE_HOLD["slow"],
                 "narration_active": True,
                 "music_active":     True,
                 "music_volume":     0.10,
@@ -218,6 +230,28 @@ def _wrap_text(text: str, width: int = 60, indent: str = "           ") -> str:
     if current:
         lines.append(current)
     return ("\n" + indent).join(lines)
+
+
+_SCENE_TYPE_CYCLE = ["environment", "close-up", "wide", "reaction", "evidence"]
+
+
+def _fix_consecutive_scene_types(beats: list) -> list:
+    """
+    Post-processing pass: if two consecutive non-real-media beats share the same
+    scene_type, rotate the second one to the next type in the cycle.
+    Modifies beats in-place and returns the list.
+    """
+    real_names = {"real_photo", "real_video", "real_audio", "discussing", "summary"}
+    for i in range(1, len(beats)):
+        prev = beats[i - 1]
+        curr = beats[i]
+        if curr.get("name", "").lower() in real_names:
+            continue
+        if prev.get("scene_type") == curr.get("scene_type"):
+            current_type = curr["scene_type"]
+            idx = _SCENE_TYPE_CYCLE.index(current_type) if current_type in _SCENE_TYPE_CYCLE else 0
+            curr["scene_type"] = _SCENE_TYPE_CYCLE[(idx + 1) % len(_SCENE_TYPE_CYCLE)]
+    return beats
 
 
 # ─── Generation ───────────────────────────────────────────────────────────────
@@ -273,7 +307,7 @@ def generate_beats(script: str) -> dict:
 
         response = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=2000,
+            max_tokens=3000,
             messages=[{"role": "user", "content": user_content}],
         )
 
@@ -288,9 +322,13 @@ def generate_beats(script: str) -> dict:
         for beat in result["beats"]:
             # Clamp duration
             beat["duration"] = max(2, min(8, int(beat.get("duration", 4))))
-            # Ensure keywords list
+            # Ensure keywords list (5–8, matching new prompt requirement)
             kws = beat.get("keywords", [])
-            beat["keywords"] = [str(k).strip() for k in kws if k][:5] or ["video"]
+            beat["keywords"] = [str(k).strip() for k in kws if k][:8] or ["video"]
+            # Normalize scene_type
+            valid_scene_types = {"close-up", "wide", "reaction", "environment", "evidence"}
+            raw_scene = beat.get("scene_type", "").lower().strip()
+            beat["scene_type"] = raw_scene if raw_scene in valid_scene_types else "wide"
             # Normalize position / excerpt / pace
             beat["script_position"] = _normalize_position(
                 beat.get("script_position", "intro")
@@ -304,8 +342,9 @@ def generate_beats(script: str) -> dict:
             # Extended media-pipeline fields
             _beat_media_defaults(beat)
 
-        # Auto-insert discussing/summary follow-up beats
+        # Auto-insert discussing/summary follow-up beats, then fix any consecutive scene_type repeats
         result["beats"] = _insert_followup_beats(result["beats"])
+        result["beats"] = _fix_consecutive_scene_types(result["beats"])
         result["total_duration"] = sum(b["duration"] for b in result["beats"])
         return result
 
@@ -323,28 +362,29 @@ def _fallback_beats(script: str) -> dict:
     chunk_size = 40
     chunks = [words[i:i + chunk_size] for i in range(0, len(words), chunk_size)]
 
+    # (name, emotion, visual_direction, scene_type, keywords, script_position, speaker_pace)
     _beat_templates = [
-        ("hook",       "shock",     "close-up reaction",      ["close-up", "face", "shock", "night"],   "cold_open", "slow"),
-        ("setup",      "curiosity", "establishing wide shot",  ["city", "street", "daylight", "wide"],   "intro",     "medium"),
-        ("tension",    "tension",   "slow zoom on subject",    ["indoor", "window", "shadows", "zoom"],  "entry_3",   "slow"),
-        ("escalation", "suspense",  "rapid cut montage",       ["hands", "phone", "car", "movement"],    "entry_2",   "fast"),
-        ("resolution", "relief",    "calm wide outdoor shot",  ["nature", "sky", "outdoor", "calm"],     "outro",     "medium"),
+        ("hook",       "foreboding",  "slow push into a dark exterior location",          "environment", ["alley", "shadow", "exterior", "dusk", "street"],          "cold_open", "slow"),
+        ("setup",      "intrigue",    "wide establishing shot — location relevant to story", "wide",     ["building", "neighbourhood", "daylight", "exterior", "road"], "intro",     "medium"),
+        ("tension",    "dread",       "slow zoom on a closed door or window from outside", "close-up",  ["window", "door", "lock", "shadow", "indoor"],               "entry_3",   "slow"),
+        ("escalation", "suspense",    "fast cuts — hands, phone screen, moving vehicle",  "reaction",   ["hands", "phone", "car", "motion", "urgency"],               "entry_2",   "fast"),
+        ("resolution", "eerie_calm",  "wide outdoor shot — open sky, empty landscape",    "wide",       ["sky", "field", "empty", "horizon", "open"],                 "outro",     "medium"),
     ]
 
     beats = []
     for i, chunk in enumerate(chunks):
         t = _beat_templates[i % len(_beat_templates)]
         excerpt = " ".join(chunk[:40])
-        pace = t[5]
         beat = {
             "name":             t[0],
             "emotion":          t[1],
             "visual_direction": t[2],
-            "keywords":         t[3],
+            "scene_type":       t[3],
+            "keywords":         t[4],
             "duration":         4,
-            "script_position":  t[4],
+            "script_position":  t[5],
             "script_excerpt":   excerpt,
-            "speaker_pace":     pace,
+            "speaker_pace":     t[6],
         }
         beat["hold_duration"] = _hold_duration(beat)
         _beat_media_defaults(beat)

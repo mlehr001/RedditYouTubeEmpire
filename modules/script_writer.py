@@ -38,14 +38,34 @@ def _trim_to_word_limit(text: str, max_words: int) -> str:
 
 
 _AI_PROMPT_BASE = """\
-You are a script formatter for a YouTube storytelling channel. Your only job is:
-1. Add a short conversational hook (2 sentences max) before the story — something like "So this person posts... and it gets wild fast." or "Okay so this one had me absolutely speechless."
-2. Insert brief narration transitions between story sections: "And then...", "But here's where it gets interesting...", "So naturally...", "Wait — it gets worse."
-3. Add commas and ellipses where natural for TTS pacing. Short punchy sentences.
-4. End with the outro provided.
-5. DO NOT rewrite, alter, summarize, or fabricate any story content. The story text must appear verbatim.
+You are a YouTube storytelling narrator — think "bedtime stories for drama addicts."
+Your job is to turn a raw Reddit post into a gripping, spoken-word narration script.
 
-Structure the output as: Hook → Setup → Tension → Twist → Fallout
+REWRITING RULES:
+- You MAY rewrite, condense, and restructure the story for better pacing
+- Preserve all real facts and events — do not invent new ones or change outcomes
+- Cut filler, Reddit-speak, and backstory that doesn't serve tension
+- Every sentence should pull the listener forward
+
+VOICE & PACING:
+- Sound like a person talking, not a news anchor reading
+- Short punchy sentences carry momentum. Use them.
+- Longer sentences slow down for weight — use before a reveal
+- Pauses: use "..." mid-sentence when the listener needs a beat
+- Emphasis: occasional ALL CAPS on key words (e.g. "she had NO idea")
+- No formal language. Contractions always. "He didn't" not "He did not."
+
+STRUCTURE (follow this order):
+1. Hook (first 8–10 seconds) — drop into the most tension-filled moment OR ask a question that makes skipping impossible. Do NOT start with "So this person..."
+2. Setup — who, where, what's at stake. Fast. 2–3 sentences max.
+3. Escalation — things get complicated. Build dread or disbelief.
+4. Turning point — the moment everything changes.
+5. Fallout — consequence, reaction, resolution (or lack of one).
+6. Outro — append the provided outro exactly as given.
+
+TRANSITIONS (use naturally, not robotically):
+"And here's where it gets weird.", "Nobody expected what happened next.",
+"Wait — it gets worse.", "So she does the only logical thing.", "Of course it backfires."
 
 Then separately extract:
 - keywords: 5–8 single visual words for b-roll (e.g. "phone", "argument", "office", "night", "car"). No phrases.
@@ -68,12 +88,11 @@ def _build_system_prompt(angle: dict | None) -> str:
         return _AI_PROMPT_BASE
 
     angle_block = (
-        f"\nCOMMENTARY ANGLE (for hook and transition tone only — do NOT alter story):\n"
+        f"\nCOMMENTARY ANGLE (shapes hook tone and narrative energy — facts must stay real):\n"
         f"  Title: {angle['title']}\n"
         f"  Core Take: {angle['core_take']}\n"
         f"  Style: {angle['style']}\n"
-        f"Let this angle inform the hook wording and transition energy. "
-        f"Story body must remain verbatim.\n"
+        f"Let this angle inform how you open and frame the story.\n"
     )
     return _AI_PROMPT_BASE + angle_block
 
@@ -97,7 +116,7 @@ def _ai_format(post: dict, body: str, angle: dict | None = None) -> dict | None:
         user_content = (
             f"Subreddit: r/{post['subreddit']}\n"
             f"Original title: {post['title']}\n\n"
-            f"--- STORY (verbatim, do not alter) ---\n{body}\n---\n\n"
+            f"--- SOURCE STORY (rewrite for narration — preserve all real facts) ---\n{body}\n---\n\n"
             f"Outro to append: {config.OUTRO}"
         )
 
@@ -107,7 +126,7 @@ def _ai_format(post: dict, body: str, angle: dict | None = None) -> dict | None:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
             ],
-            temperature=0.4,
+            temperature=0.7,
             max_tokens=2000,
         )
 
@@ -447,6 +466,17 @@ def build_mystery_top5_script(
             f"The Most Disturbing {topic_title} Ever Documented",
         ],
     }
+
+
+def write_story_narration(post: dict, angle: dict | None = None) -> dict:
+    """
+    Narration-first script writer. Rewrites story for spoken delivery.
+    Same return shape as build_script — drop-in compatible with downstream pipeline.
+
+    Use this when output quality matters more than verbatim fidelity.
+    Falls back to build_script() if AI call fails.
+    """
+    return build_script(post, angle=angle)
 
 
 def build_script(post: dict, angle: dict | None = None) -> dict:

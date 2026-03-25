@@ -25,45 +25,128 @@ from moviepy import (
 )
 
 
-def _ken_burns(clip, zoom_ratio: float = 1.05):
+def _ken_burns(clip, zoom_ratio: float = 1.05, direction: str = "in",
+               pan: float = 0.0):
     """
-    Apply a slow Ken Burns zoom-in effect over the clip duration.
-    Uses frame-level transform with PIL for accurate crop-to-original-size.
+    Ken Burns effect with optional horizontal pan drift.
+
+    direction: "in" zooms in, "out" starts zoomed and pulls back.
+    pan:       -1.0 to +1.0. Shifts the crop window across the extra pixels created
+               by zooming. Negative = drifts left-to-right; positive = right-to-left.
+               Small values (±0.10–±0.18) feel natural. 0.0 = center lock (no pan).
     """
     from PIL import Image
 
-    w_out, h_out = clip.size  # (width, height) in MoviePy 2.x
+    w_out, h_out = clip.size
 
     def zoom_frame(get_frame, t):
-        img = get_frame(t)
-        scale = 1.0 + (zoom_ratio - 1.0) * (t / max(clip.duration, 0.001))
+        img      = get_frame(t)
+        progress = t / max(clip.duration, 0.001)
+        if direction == "out":
+            scale = zoom_ratio - (zoom_ratio - 1.0) * progress
+        else:
+            scale = 1.0 + (zoom_ratio - 1.0) * progress
         new_w = int(w_out * scale)
         new_h = int(h_out * scale)
-        pil = Image.fromarray(img)
-        pil = pil.resize((new_w, new_h), Image.LANCZOS)
-        left = (new_w - w_out) // 2
-        top = (new_h - h_out) // 2
-        pil = pil.crop((left, top, left + w_out, top + h_out))
+        pil   = Image.fromarray(img)
+        pil   = pil.resize((new_w, new_h), Image.LANCZOS)
+        # Pan: shift the crop window horizontally over time using the surplus pixels
+        surplus_x = new_w - w_out
+        pan_shift  = int(pan * surplus_x * progress)
+        left = max(0, min(surplus_x // 2 + pan_shift, surplus_x))
+        top  = (new_h - h_out) // 2
+        pil  = pil.crop((left, top, left + w_out, top + h_out))
         return np.array(pil)
 
     return clip.transform(zoom_frame)
 
 
-def _make_segment(clip_path: str, seg_duration: float) -> VideoFileClip:
+# Emotion → (zoom_ratio, preferred_direction)
+_EMOTION_ZOOM: dict[str, tuple[float, str]] = {
+    "shock":        (1.12, "in"),
+    "horror":       (1.12, "in"),
+    "betrayal":     (1.10, "in"),
+    "outrage":      (1.10, "in"),
+    "devastation":  (1.10, "in"),
+    "dread":        (1.08, "in"),
+    "suspense":     (1.08, "in"),
+    "paranoia":     (1.08, "in"),
+    "anticipation": (1.07, "in"),
+    "discomfort":   (1.06, "out"),
+    "foreboding":   (1.06, "out"),
+    "unease":       (1.05, "out"),
+    "intrigue":     (1.05, "in"),
+    "curiosity":    (1.05, "in"),
+    "melancholy":   (1.04, "out"),
+    "eerie_calm":   (1.04, "out"),
+    "unresolved":   (1.04, "out"),
+    "relief":       (1.03, "out"),
+    "vindication":  (1.03, "in"),
+}
+_DEFAULT_ZOOM = (1.05, "in")
+
+
+def _beat_zoom_params(beat: dict, beat_index: int) -> tuple[float, str, float, float]:
     """
-    Loads a clip, resizes to target resolution, loops if needed,
-    trims to seg_duration, then applies Ken Burns zoom.
+    Returns (zoom_ratio, direction, start_offset, pan) for a beat.
+
+    - Emotion drives zoom intensity and direction.
+    - Cold open / first beat always gets strong zoom-in with no pan (pure focus).
+    - start_offset (5–30%) varies the entry point on reused clips.
+    - pan adds horizontal drift so every segment feels physically distinct.
+    - Every 3rd mild beat flips to zoom-out.
+    """
+    emotion    = (beat.get("emotion", "") or "").lower()
+    zoom_ratio, direction = _EMOTION_ZOOM.get(emotion, _DEFAULT_ZOOM)
+
+    is_hook = beat_index == 0 or (beat.get("script_position") or "") == "cold_open"
+
+    # Hook beat: strong zoom-in, no pan — let the zoom land cleanly
+    if is_hook:
+        zoom_ratio = max(zoom_ratio, 1.12)
+        direction  = "in"
+        pan        = 0.0
+    else:
+        # Subtle pan drift — direction alternates by beat index for variety
+        pan_magnitude = random.uniform(0.08, 0.18)
+        pan = pan_magnitude if beat_index % 2 == 0 else -pan_magnitude
+
+    # Alternate direction on every 3rd mild beat
+    if not is_hook and zoom_ratio < 1.07 and direction == "in" and beat_index % 3 == 2:
+        direction = "out"
+
+    # Random start offset so reused clips don't look identical
+    start_offset = random.uniform(0.05, 0.30)
+
+    return zoom_ratio, direction, start_offset, pan
+
+
+def _make_segment(clip_path: str, seg_duration: float,
+                  zoom_ratio: float = 1.05, direction: str = "in",
+                  start_offset: float = 0.0, pan: float = 0.0) -> VideoFileClip:
+    """
+    Loads a clip, resizes to target resolution, applies start_offset for variety,
+    loops if needed, trims to seg_duration, then applies Ken Burns zoom + pan.
+
+    start_offset: fraction of clip duration to skip at the start (0.0–0.3).
+    pan:          horizontal drift passed to _ken_burns (0.0 = center lock).
     """
     clip = VideoFileClip(clip_path).without_audio()
     clip = clip.resized((config.VIDEO_WIDTH, config.VIDEO_HEIGHT))
 
+    # Apply start offset for visual variety on repeated clips
+    if start_offset > 0 and clip.duration > seg_duration:
+        max_offset = clip.duration - seg_duration
+        offset     = min(start_offset * clip.duration, max_offset)
+        clip       = clip.subclipped(offset)
+
     # Loop to cover seg_duration if the clip is shorter
     if clip.duration < seg_duration:
         loops = int(seg_duration / clip.duration) + 1
-        clip = concatenate_videoclips([clip] * loops)
+        clip  = concatenate_videoclips([clip] * loops)
 
     clip = clip.subclipped(0, seg_duration)
-    clip = _ken_burns(clip, zoom_ratio=1.05)
+    clip = _ken_burns(clip, zoom_ratio=zoom_ratio, direction=direction, pan=pan)
     return clip
 
 
@@ -284,13 +367,60 @@ def _make_real_media_segment(beat: dict, duration: float):
         )
 
 
-def _make_beat_segment(beat: dict, seg_dur: float, fallback_clips: list):
+# Emotions that get a darker, moodier look
+_DARK_OVERLAY_EMOTIONS = {
+    "dread", "foreboding", "eerie_calm", "horror", "paranoia",
+    "unease", "melancholy", "unresolved",
+}
+
+
+def _darken_clip(clip, factor: float = 0.72):
+    """
+    Multiply every frame by factor (e.g. 0.72 = 28% darker).
+    Pure numpy op — no compositing, negligible render overhead.
+    Used for atmospheric / eerie beats.
+    """
+    def darken(get_frame, t):
+        return np.clip(get_frame(t).astype(np.float32) * factor, 0, 255).astype(np.uint8)
+    return clip.transform(darken)
+
+
+def _apply_vignette(clip):
+    """
+    Burn dark edges into every frame — pure numpy radial gradient.
+    Used on the hook (beat_index == 0) to signal a cinematic opening.
+    No compositing layer required.
+    """
+    w, h = clip.size
+    cx, cy = w / 2.0, h / 2.0
+    Y, X = np.ogrid[:h, :w]
+    # Normalised radial distance (0 = center, 1 = corner)
+    dist = np.sqrt(((X - cx) / cx) ** 2 + ((Y - cy) / cy) ** 2)
+    # Vignette mask: 1.0 at center, drops to ~0.55 at corners
+    mask = np.clip(1.0 - dist * 0.45, 0.55, 1.0).astype(np.float32)
+
+    def vignette_frame(get_frame, t):
+        frame = get_frame(t).astype(np.float32)
+        frame[:, :, 0] *= mask
+        frame[:, :, 1] *= mask
+        frame[:, :, 2] *= mask
+        return np.clip(frame, 0, 255).astype(np.uint8)
+
+    return clip.transform(vignette_frame)
+
+
+def _make_beat_segment(beat: dict, seg_dur: float, fallback_clips: list,
+                        beat_index: int = 0):
     """
     Build one video segment for any beat type.
     Routes to real-media or standard B-roll renderer.
+    Derives zoom, direction, and start_offset from beat emotion + position.
     Falls back gracefully on any failure.
     """
+    zoom_ratio, direction, start_offset, pan = _beat_zoom_params(beat, beat_index)
+    emotion       = (beat.get("emotion", "") or "").lower()
     visual_source = beat.get("visual_source", "broll")
+    is_hook       = beat_index == 0
 
     # ── Real media ────────────────────────────────────────────────────────────
     if visual_source == "real_media" and beat.get("media_item"):
@@ -300,19 +430,41 @@ def _make_beat_segment(beat: dict, seg_dur: float, fallback_clips: list):
             print(f"  [WARN] Real media segment failed: {e} — falling back to B-roll")
 
     # ── B-roll ────────────────────────────────────────────────────────────────
+    seg = None
     path = beat.get("path", "")
     if path and os.path.exists(path):
         try:
-            return _make_segment(path, seg_dur)
+            seg = _make_segment(path, seg_dur,
+                                 zoom_ratio=zoom_ratio,
+                                 direction=direction,
+                                 start_offset=start_offset,
+                                 pan=pan)
         except Exception as e:
             print(f"  [WARN] B-roll segment failed ({path}): {e}")
 
     # ── Emergency fallback: cached clip ───────────────────────────────────────
-    if fallback_clips:
+    if seg is None and fallback_clips:
         try:
-            return _make_segment(random.choice(fallback_clips), seg_dur)
+            seg = _make_segment(random.choice(fallback_clips), seg_dur,
+                                 zoom_ratio=zoom_ratio, direction=direction,
+                                 pan=pan)
         except Exception as e:
             print(f"  [WARN] Fallback clip failed: {e}")
+
+    if seg is not None:
+        # Atmospheric darkening — eerie/dread beats get a moodier look
+        if emotion in _DARK_OVERLAY_EMOTIONS:
+            try:
+                seg = _darken_clip(seg, factor=0.72)
+            except Exception:
+                pass
+        # Hook vignette — cinematic dark edges on the opening beat only
+        if is_hook:
+            try:
+                seg = _apply_vignette(seg)
+            except Exception:
+                pass
+        return seg
 
     # ── Ultimate fallback: black frame ─────────────────────────────────────────
     return ColorClip(
@@ -374,48 +526,53 @@ def create_video_from_beats(audio_path: str, beat_clips: list, post: dict) -> st
     audio = AudioFileClip(audio_path)
     total_duration = audio.duration
 
-    segments = []
-    elapsed = 0.0
-    beat_index = 0
+    segments    = []
+    fallback_clips = _get_fallback_clips()
+    elapsed     = 0.0
+    beat_index  = 0
     total_beats = len(beat_clips)
 
     print(f"  Building {total_duration:.1f}s video from {total_beats} beat-mapped clips...")
     while elapsed < total_duration:
-        beat = beat_clips[beat_index % total_beats]
-        remaining = total_duration - elapsed
+        beat         = beat_clips[beat_index % total_beats]
+        remaining    = total_duration - elapsed
         seg_duration = min(float(beat["duration"]), remaining)
 
         print(
             f"  -> Beat {beat_index + 1}: '{beat['beat_name']}' [{beat['emotion']}] "
-            f"{os.path.basename(beat['path'])} ({seg_duration:.1f}s)"
+            f"{os.path.basename(beat.get('path', 'fallback'))} ({seg_duration:.1f}s)"
         )
-        seg = _make_segment(beat["path"], seg_duration)
+        seg = _make_beat_segment(beat, seg_duration, fallback_clips,
+                                  beat_index=beat_index)
         segments.append(seg)
-        elapsed += seg_duration
+        elapsed    += seg_duration
         beat_index += 1
 
     background = concatenate_videoclips(segments)
     background = background.with_volume_scaled(config.BROLL_VOLUME)
     final = background.with_audio(audio)
 
-    # Subtle title card for first 5 seconds
+    # Hook title card — larger font, fades in/out for visual punch
     try:
-        title_text = post["title"]
+        from moviepy import vfx as _vfx
+        title_text    = post["title"]
         if len(title_text) > 80:
             title_text = title_text[:77] + "..."
+        card_duration = min(6.0, total_duration)
 
         title_clip = (
             TextClip(
                 title_text,
-                font_size=36,
+                font_size=44,
                 color="white",
                 stroke_color="black",
-                stroke_width=2,
+                stroke_width=3,
                 size=(config.VIDEO_WIDTH - 80, None),
                 method="caption",
             )
-            .with_position(("center", 40))
-            .with_duration(min(5, total_duration))
+            .with_position(("center", 50))
+            .with_duration(card_duration)
+            .with_effects([_vfx.CrossFadeIn(0.5), _vfx.CrossFadeOut(0.8)])
         )
         final = CompositeVideoClip([final, title_clip])
     except Exception as e:
@@ -580,7 +737,8 @@ def create_mystery_video(
                     beat_vol = 0.0
 
                 try:
-                    seg = _make_beat_segment(beat, seg_dur, fallback_clips)
+                    seg = _make_beat_segment(beat, seg_dur, fallback_clips,
+                                              beat_index=beat_index)
                     segments.append(seg)
                     music_envelope.append((elapsed, seg_dur, beat_vol))
 
@@ -623,7 +781,8 @@ def create_mystery_video(
             beat_vol = 0.0
 
         try:
-            seg = _make_beat_segment(beat, seg_dur, fallback_clips)
+            seg = _make_beat_segment(beat, seg_dur, fallback_clips,
+                                      beat_index=beat_index)
             segments.append(seg)
             music_envelope.append((elapsed, seg_dur, beat_vol))
             elapsed    += seg_dur
@@ -719,20 +878,32 @@ def create_video(audio_path: str, clip_paths: list, post: dict) -> str:
     audio = AudioFileClip(audio_path)
     total_duration = audio.duration
 
-    seg_duration = 4.5  # seconds per clip segment
-    segments = []
-    elapsed = 0.0
+    # Vary segment duration (3.5–5.5s) and alternate zoom direction for visual variety
+    _seg_durations = [3.5, 4.0, 4.5, 5.0, 5.5]
+    _directions    = ["in", "in", "out", "in", "out"]   # pattern, not pure random
+    segments   = []
+    elapsed    = 0.0
     clip_index = 0
 
     print(f"  Building {total_duration:.1f}s video from {len(clip_paths)} keyword clips...")
     while elapsed < total_duration:
-        remaining = total_duration - elapsed
-        this_seg = min(seg_duration, remaining)
+        remaining    = total_duration - elapsed
+        seg_duration = min(_seg_durations[clip_index % len(_seg_durations)], remaining)
+        direction    = _directions[clip_index % len(_directions)]
+        zoom_ratio   = random.uniform(1.04, 1.08)
+        start_offset = random.uniform(0.05, 0.25)
+        pan_mag      = random.uniform(0.08, 0.16)
+        pan          = pan_mag if clip_index % 2 == 0 else -pan_mag
+
         path = clip_paths[clip_index % len(clip_paths)]
-        print(f"  -> Segment {clip_index + 1}: {os.path.basename(path)} ({this_seg:.1f}s)")
-        seg = _make_segment(path, this_seg)
+        print(f"  -> Segment {clip_index + 1}: {os.path.basename(path)} ({seg_duration:.1f}s)")
+        seg = _make_segment(path, seg_duration,
+                             zoom_ratio=zoom_ratio,
+                             direction=direction,
+                             start_offset=start_offset,
+                             pan=pan)
         segments.append(seg)
-        elapsed += this_seg
+        elapsed    += seg_duration
         clip_index += 1
 
     background = concatenate_videoclips(segments)

@@ -17,12 +17,44 @@ PEXELS_API_BASE = "https://api.pexels.com/videos/search"
 LIBRARY_DIR     = os.path.join("assets", "library")
 LIBRARY_INDEX   = os.path.join(LIBRARY_DIR, "index.json")
 
-# Emotion → Pexels search modifiers
+# Emotion → Pexels search modifiers (covers all beat_mapper emotion labels)
 EMOTION_EXPANSIONS = {
-    "dread":    "dark moody cinematic",
-    "shock":    "dramatic intense",
-    "mystery":  "eerie atmospheric fog",
-    "suspense": "tension slow motion",
+    # Opening
+    "unease":       "uneasy dark",
+    "intrigue":     "mysterious cinematic",
+    "foreboding":   "ominous moody",
+    "curiosity":    "curious searching",
+    # Building
+    "dread":        "dark moody cinematic",
+    "suspense":     "tension slow motion",
+    "discomfort":   "uncomfortable uneasy",
+    "anticipation": "dramatic waiting",
+    "paranoia":     "shadowy paranoid",
+    # Peak
+    "shock":        "dramatic intense",
+    "horror":       "horror dark",
+    "outrage":      "dramatic confrontation",
+    "betrayal":     "betrayal dark",
+    "devastation":  "devastation dramatic",
+    "disgust":      "disturbing close",
+    # Fallout
+    "relief":       "calm peaceful",
+    "vindication":  "triumphant open",
+    "melancholy":   "melancholy slow",
+    "eerie_calm":   "eerie quiet",
+    "unresolved":   "unsettled mysterious",
+    # Legacy
+    "mystery":      "eerie atmospheric fog",
+    "tension":      "tension dramatic",
+}
+
+# scene_type → short visual modifier for Pexels query focus
+SCENE_TYPE_MODIFIERS = {
+    "close-up":    "closeup",
+    "wide":        "aerial wide",
+    "reaction":    "reaction",
+    "environment": "cinematic outdoor",
+    "evidence":    "detail macro",
 }
 
 # beat script_position prefix → topic category append
@@ -76,40 +108,30 @@ def _score_clip(video: dict) -> float:
 
 def _expand_keyword(keyword: str, beat: dict) -> str:
     """
-    Expand a keyword using beat context for richer Pexels queries.
+    Expand a keyword into a focused 3–4 word Pexels query.
 
-    Appends (in order):
-    - Up to 3 long words from script_excerpt
-    - Topic category derived from script_position
-    - Emotion modifier from EMOTION_EXPANSIONS
+    Uses: keyword + emotion modifier + scene_type modifier.
+    Short queries produce broader, more varied Pexels results.
     """
     parts = [keyword]
-
-    excerpt = beat.get("script_excerpt", "") or ""
-    if excerpt:
-        words = [w.strip(".,!?\"'") for w in excerpt.split() if len(w) > 4]
-        parts.extend(words[:3])
-
-    position = (beat.get("script_position", "") or beat.get("name", "") or "").lower()
-    for prefix, category in POSITION_CATEGORIES.items():
-        if prefix in position:
-            parts.append(category)
-            break
 
     emotion = (beat.get("emotion", "") or "").lower()
     if emotion in EMOTION_EXPANSIONS:
         parts.append(EMOTION_EXPANSIONS[emotion])
 
-    # Deduplicate, preserve order
+    scene_type = (beat.get("scene_type", "") or "").lower()
+    if scene_type in SCENE_TYPE_MODIFIERS:
+        parts.append(SCENE_TYPE_MODIFIERS[scene_type])
+
+    # Deduplicate, cap total at 4 words
     seen   = set()
     result = []
-    for p in parts:
-        key = p.lower()
-        if key not in seen:
-            seen.add(key)
-            result.append(p)
-
-    return " ".join(result)
+    for part in parts:
+        for word in part.split():
+            if word.lower() not in seen:
+                seen.add(word.lower())
+                result.append(word)
+    return " ".join(result[:4])
 
 
 # ── Local asset library ───────────────────────────────────────────────────────
@@ -193,26 +215,29 @@ def _mark_library_used(filename: str, video_id: str, library: dict) -> dict:
 
 
 def _find_in_library(emotion: str, keywords: list, video_id: str,
-                     library: dict):
+                     library: dict, used_filenames: set = None):
     """
-    Find the best-scoring library clip matching emotion + keywords.
-    Skips clips used in the last 3 video runs.
+    Find a good library clip matching emotion + keywords.
+    Skips clips used in the last 3 video runs AND clips already used in this video.
+    Randomly picks from the top 3 matches to introduce variety.
 
     Returns (path, filename, quality_score) or (None, None, 0).
     """
-    recent_videos = _get_recent_videos(library)
-    last_3        = set(recent_videos[-3:]) if recent_videos else set()
-    keyword_set   = {k.lower() for k in keywords}
-    candidates    = []
+    recent_videos  = _get_recent_videos(library)
+    last_3         = set(recent_videos[-3:]) if recent_videos else set()
+    keyword_set    = {k.lower() for k in keywords}
+    used_filenames = used_filenames or set()
+    candidates     = []
 
     for filename, entry in library.items():
         if filename.startswith("_"):
+            continue
+        if filename in used_filenames:        # within-video dedup
             continue
         lib_path = os.path.join(LIBRARY_DIR, filename)
         if not os.path.exists(lib_path):
             continue
 
-        # Skip if used in any of the last 3 videos
         clip_history = set(entry.get("video_history", []))
         if clip_history & last_3:
             continue
@@ -231,7 +256,7 @@ def _find_in_library(emotion: str, keywords: list, video_id: str,
         return None, None, 0
 
     candidates.sort(key=lambda x: x[0], reverse=True)
-    best_score, best_file, best_q = candidates[0]
+    _, best_file, best_q = random.choice(candidates[:3])  # vary within top 3
     return os.path.join(LIBRARY_DIR, best_file), best_file, best_q
 
 
@@ -335,6 +360,44 @@ def _fetch_from_pexels_scored(search_term: str,
     return url, f"{video_id}.mp4", video_id, best_score
 
 
+def _fetch_candidates_from_pexels(search_term: str, n: int = 5,
+                                   used_ids: set = None) -> list:
+    """
+    Search Pexels, score all results, return up to n best candidates.
+    Returns list of (score, url, filename, video_id) tuples, best-first.
+    """
+    api_key = os.getenv("PEXELS_API_KEY")
+    if not api_key:
+        raise ValueError("PEXELS_API_KEY not set in .env")
+
+    used_ids = used_ids or set()
+    headers  = {"Authorization": api_key}
+    params   = {
+        "query":       search_term,
+        "per_page":    20,
+        "orientation": "landscape",
+        "size":        "large",
+    }
+
+    response = requests.get(PEXELS_API_BASE, headers=headers,
+                             params=params, timeout=15)
+    response.raise_for_status()
+    videos = response.json().get("videos", [])
+
+    scored = []
+    for video in videos:
+        vid_id = video["id"]
+        if vid_id in used_ids:
+            continue
+        url, _, _ = _get_best_file(video)
+        if not url:
+            continue
+        scored.append((_score_clip(video), url, f"{vid_id}.mp4", vid_id))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return scored[:n]
+
+
 def _fetch_from_pexels(search_term: str) -> tuple:
     """Thin wrapper for legacy callers — returns (url, filename)."""
     url, filename, _vid_id, _score = _fetch_from_pexels_scored(search_term)
@@ -371,7 +434,8 @@ def get_clips_for_beats(beats: list, video_id: str = None) -> list:
     if video_id is None:
         video_id = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
 
-    used_pexels_ids: set = set()
+    used_pexels_ids:  set = set()   # Pexels video IDs used this run
+    used_clip_paths:  set = set()   # local paths already assigned this video
     result = []
 
     for beat in beats:
@@ -385,55 +449,70 @@ def get_clips_for_beats(beats: list, video_id: str = None) -> list:
         quality_score = 0.0
         keywords_used = list(keywords)
 
-        # ── 1. Library lookup ─────────────────────────────────────────────────
+        # ── 1. Library lookup (with within-video dedup) ───────────────────────
         if lib_size > 0:
+            used_fnames = {os.path.basename(p) for p in used_clip_paths}
             lib_path, lib_filename, lib_q = _find_in_library(
-                emotion, keywords, video_id, library
+                emotion, keywords, video_id, library, used_fnames
             )
             if lib_path:
                 clip_path     = lib_path
                 quality_score = lib_q
                 library       = _mark_library_used(lib_filename, video_id, library)
+                used_clip_paths.add(lib_path)
                 source        = "LIBRARY" if lib_primary else "LIBRARY(early)"
                 print(f"  [{source}] Beat '{beat_name}' [{emotion}]: {lib_filename} "
                       f"(q={lib_q:.2f})")
 
-        # ── 2. Pexels search ──────────────────────────────────────────────────
+        # ── 2. Pexels candidate pool across all keywords ───────────────────────
         if clip_path is None:
+            pool: list = []
             for keyword in keywords:
                 expanded = _expand_keyword(keyword, beat)
                 try:
-                    vid_url, filename, pexels_id, q_score = _fetch_from_pexels_scored(
-                        expanded, used_pexels_ids
+                    candidates = _fetch_candidates_from_pexels(
+                        expanded, n=5, used_ids=used_pexels_ids
                     )
+                    pool.extend(candidates)
                 except Exception as e:
                     print(f"  [WARN] Pexels failed for beat '{beat_name}' / "
                           f"'{expanded}': {e}")
-                    continue
 
-                if not vid_url or not filename:
-                    continue
+            # Deduplicate pool by video_id, best-score first
+            seen_in_pool: set = set()
+            deduped_pool: list = []
+            for score, url, fname, vid_id in sorted(pool, key=lambda x: x[0], reverse=True):
+                if vid_id not in seen_in_pool:
+                    seen_in_pool.add(vid_id)
+                    deduped_pool.append((score, url, fname, vid_id))
 
-                dest = os.path.join(config.ASSETS_DIR, filename)
+            # Weighted-random pick from top 5 candidates (favours quality, allows variety)
+            top_n = min(5, len(deduped_pool))
+            if top_n:
+                weights = [1 / (i + 1) for i in range(top_n)]  # 1, 0.5, 0.33 …
+                chosen_score, chosen_url, chosen_fname, chosen_id = random.choices(
+                    deduped_pool[:top_n], weights=weights, k=1
+                )[0]
+
+                dest = os.path.join(config.ASSETS_DIR, chosen_fname)
                 if os.path.exists(dest):
                     clip_path     = dest
-                    quality_score = q_score
-                    keywords_used = [expanded]
-                    used_pexels_ids.add(pexels_id)
-                    print(f"  [CACHE] Beat '{beat_name}' [{emotion}]: {filename}")
-                    break
+                    quality_score = chosen_score
+                    keywords_used = [_expand_keyword(keywords[0], beat)] if keywords else []
+                    used_pexels_ids.add(chosen_id)
+                    used_clip_paths.add(clip_path)
+                    print(f"  [CACHE] Beat '{beat_name}' [{emotion}]: {chosen_fname}")
                 else:
                     try:
-                        print(f"  [DL] Beat '{beat_name}' [{emotion}] / "
-                              f"'{expanded}': {filename}")
-                        clip_path     = _download_clip(vid_url, filename)
-                        quality_score = q_score
-                        keywords_used = [expanded]
-                        used_pexels_ids.add(pexels_id)
-                        break
+                        print(f"  [DL] Beat '{beat_name}' [{emotion}]: {chosen_fname}")
+                        clip_path     = _download_clip(chosen_url, chosen_fname)
+                        quality_score = chosen_score
+                        keywords_used = [_expand_keyword(keywords[0], beat)] if keywords else []
+                        used_pexels_ids.add(chosen_id)
+                        used_clip_paths.add(clip_path)
                     except Exception as e:
                         print(f"  [WARN] Download failed for beat "
-                              f"'{beat_name}' / '{keyword}': {e}")
+                              f"'{beat_name}': {e}")
 
         # ── 3. Add to library after Pexels download ───────────────────────────
         if clip_path and not clip_path.startswith(LIBRARY_DIR):
