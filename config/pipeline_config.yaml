@@ -1,0 +1,58 @@
+# Mystery Pipeline Configuration
+# Copy this to config.local.yaml and add your API keys
+
+pipeline:
+  target_duration: 1200  # 20 minutes in seconds
+  word_per_minute: 150   # Conservative, dramatic pace
+  cases_per_video: 5
+
+sources:
+  pexels:
+    api_key: "${PEXELS_API_KEY}"
+    rate_limit: 200      # requests per hour
+    base_url: "https://api.pexels.com/videos"
+
+  pixabay:
+    api_key: "${PIXABAY_API_KEY}"
+    rate_limit: 2000     # requests per hour (conservative)
+    base_url: "https://pixabay.com/api/videos/"
+
+  archive_org:
+    rate_limit: 600      # requests per hour (be polite)
+    base_url: "https://archive.org"
+
+library:
+  path: "./library"
+  min_resolution: 1080
+  target_clips_per_video: 40
+  freshness_lookback: 10  # videos to avoid repeating
+
+production:
+  output_path: "./output"
+  temp_path: "./output/temp"
+  video_codec: "libx264"
+  audio_codec: "aac"
+  preset: "slow"         # quality over speed
+  crf: 18               # high quality (0-51, lower=better)
+
+  # Effects
+  ken_burns_zoom: 1.15   # 15% zoom
+  grain_intensity: 0.03
+  text_font: "Roboto-Bold"
+  text_color: "white"
+  text_border_color: "black"
+  text_border_width: 2
+
+music:
+  library_path: "./library/music"
+  duck_db: -20          # dB reduction when voice present
+  fade_in: 2.0
+  fade_out: 3.0
+
+  # Mood tracks (place files in library_path)
+  moods:
+    tense: ["tense_01.mp3", "tense_02.mp3", "tense_03.mp3"]
+    melancholy: ["sad_01.mp3", "sad_02.mp3"]
+    investigation: ["investigate_01.mp3", "investigate_02.mp3"]
+    reveal: ["reveal_01.mp3", "reveal_02.mp3"]
+    outro: ["outro_01.mp3"]

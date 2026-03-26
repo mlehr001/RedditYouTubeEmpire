@@ -43,6 +43,9 @@ from modules.music_manager import get_music_for_category
 from modules.broll import get_clips_for_beats
 from modules.editor import create_mystery_video
 
+def select_theme():
+    # TEMP: hardcoded for now (we automate later)
+    return "alien sightings"
 
 def _attach_media_items(beats: list, topic: dict) -> list:
     """
@@ -137,8 +140,8 @@ def _inject_mystery_keywords(beats: list, extra_keywords: list) -> list:
 
 
 def run_mystery():
-    category = config.MYSTERY_CATEGORY
-    print(f"[CH2] Category: {category}\n")
+    theme = select_theme()
+    print(f"[CH2] Category: {theme}")
 
     os.makedirs(config.OUTPUT_DIR, exist_ok=True)
     os.makedirs(config.MYSTERY_FRAMES_DIR, exist_ok=True)
@@ -147,7 +150,7 @@ def run_mystery():
     while True:
         # 1. Mystery scraper — get topic + entries
         print("[1/13] SCRAPE — Mystery topic + entries")
-        topic = get_mystery_topic(category)
+        topic = get_mystery_topic(theme)
         entries = topic["entries"]
         topic_id = topic["topic_id"]
         print(f"[OK] Topic: '{topic['title']}' — {len(entries)} entries")
@@ -179,7 +182,12 @@ def run_mystery():
 
         # 4. Mystery script — write Top 5 script (Claude)
         print("\n[4/13] SCRIPT — Write mystery Top 5 script (Claude)")
-        script_result = build_mystery_top5_script(topic, top5, angle=selected_angle)
+        script_result = build_mystery_top5_script(
+            topic,
+            top5,
+            theme=theme,
+            angle=selected_angle
+        )   
         script = script_result["script"]
         script_entries = script_result.get("entries", [])
         keywords = script_result.get("keywords", ["mystery", "dark", "eerie"])
@@ -260,7 +268,7 @@ def run_mystery():
 
         # 9. Music manager — select + download track
         print("\n[9/13] MUSIC — Select background music")
-        music_path = get_music_for_category(category)
+        music_path = get_music_for_category(theme))
         if music_path:
             print(f"[OK] Music: {os.path.basename(music_path)}")
         else:
